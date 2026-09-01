@@ -41,7 +41,9 @@ python scripts/collect_kr.py
 
 평일 18:45 KST에 `.github/workflows/update-kr-data.yml`이 자동 실행됩니다. 첫 실행은 전체 가격 이력을 수집하므로 시간이 오래 걸릴 수 있고, 이후 실행은 Actions 캐시를 이용해 누락 구간만 추가합니다.
 
-가격·거래량으로 계산 가능한 RS, Trend, VCP와 기술 신호는 현재 수집기에 포함되어 있습니다. SEPA 성장률·등급과 CANSLIM 재무 항목은 OpenDART 연결 단계에서 채워지며 API 키는 저장소 코드가 아니라 GitHub Actions Secret `DART_API_KEY`에 보관합니다.
+가격·거래량으로 계산 가능한 RS, Trend, VCP와 기술 신호를 수집하고, OpenDART의 연결·별도 재무제표로 분기 EPS·매출 성장률, 연간 EPS 성장률과 ROE를 계산합니다. 이 값으로 SEPA 등급과 CANSLIM 점수를 산출합니다. API 키는 저장소 코드가 아니라 GitHub Actions Secret `DART_API_KEY`에 보관합니다.
+
+시가총액 분류는 3,000억 원 미만을 소형, 3,000억~1조 원 미만을 중형, 1조~10조 원 미만을 중대형, 10조 원 이상을 대형으로 봅니다. `중형 이상` 필터는 시가총액 3,000억 원 이상을 뜻합니다.
 
 ## 주의
 

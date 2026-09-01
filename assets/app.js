@@ -65,10 +65,12 @@ function updateAvailability(rawItems) {
     input.closest("label")?.setAttribute("title", available ? "" : "데이터 연결 전");
   });
 
-  const sepaReady = ["sepaGrade", "quarterEpsGrowth", "quarterSalesGrowth", "annualEpsGrowth"].some((field) => state.availableFields.has(field));
+  const sepaReady = ["quarterEpsGrowth", "quarterSalesGrowth", "annualEpsGrowth"].some((field) => state.availableFields.has(field));
   const canSlimReady = state.availableFields.has("canSlimScore");
-  $("#sepaAvailability").textContent = sepaReady ? "" : "· DART 연결 전";
-  $("#canSlimAvailability").textContent = canSlimReady ? "" : "· DART 연결 전";
+  const financialCount = Number(state.meta.financialCount || rawItems.filter((item) => item.financialDataAvailable).length);
+  const financialStatus = financialCount ? `· DART ${financialCount.toLocaleString("ko-KR")}개 반영` : "· DART 연결 전";
+  $("#sepaAvailability").textContent = sepaReady ? financialStatus : "· DART 연결 전";
+  $("#canSlimAvailability").textContent = canSlimReady ? financialStatus : "· DART 연결 전";
   $("#signalAvailability").textContent = `${state.availableSignals.size}/${Object.keys(SIGNAL_LABELS).length}개 계산 중 · 선택 신호 중 하나 이상`;
   $("#qualityLabel").textContent = canSlimReady ? "Trend 8 · CANSLIM 7+" : "Trend 8";
   state.signals = new Set([...state.signals].filter((signal) => state.availableSignals.has(signal)));

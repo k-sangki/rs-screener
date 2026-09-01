@@ -37,6 +37,7 @@ jobs:
         env:
           KRX_ID: ${{ secrets.KRX_ID }}
           KRX_PW: ${{ secrets.KRX_PW }}
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
       - run: python -m unittest discover -s tests -v
       - name: Commit changed data
         run: |

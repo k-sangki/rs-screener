@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import pickle
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -17,6 +18,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 from pykrx import stock
 
+from dart_engine import collect_financials, score_item
 from rs_engine import average, market_cap_size, percentile_scores, range_signals, trend_template_score, weighted_return
 
 
@@ -133,6 +135,7 @@ def build_metrics(ticker: str, frame: pd.DataFrame, market: str, benchmark: pd.S
     current = closes[-1]
     low52 = min(closes[-252:])
     high52 = max(high.tolist()[-252:])
+    average_volume50 = average(volume.tolist(), 50) or 0
     ma_aligned = current > ma50 > ma150 > ma200
     trend_template = bool(
         ma_aligned
@@ -144,7 +147,10 @@ def build_metrics(ticker: str, frame: pd.DataFrame, market: str, benchmark: pd.S
     recent_range = (max(closes[-10:]) / min(closes[-10:]) - 1) if min(closes[-10:]) > 0 else 99
     prior_slice = closes[-40:-10]
     prior_range = (max(prior_slice) / min(prior_slice) - 1) if min(prior_slice) > 0 else 0
-    vcp = bool(trend_template and prior_range > 0 and recent_range <= prior_range * 0.70 and average(volume.tolist(), 10) < average(volume.tolist(), 50) * 0.80)
+    vcp = bool(trend_template and prior_range > 0 and recent_range <= prior_range * 0.70 and average(volume.tolist(), 10) < average_volume50 * 0.80)
+    box_high = max(high.tolist()[-21:-1])
+    box_low = min(low.tolist()[-21:-1])
+    box_breakout = bool(box_low > 0 and box_high / box_low - 1 <= 0.15 and current >= box_high)
 
     aligned = pd.concat([close.rename("stock"), benchmark.rename("benchmark")], axis=1).dropna().tail(252)
     if aligned.empty:
@@ -172,10 +178,36 @@ def build_metrics(ticker: str, frame: pd.DataFrame, market: str, benchmark: pd.S
         "rsLineValue": round(rs_line_value, 2),
         "rsLineNew": rs_line_new,
         "newHigh52": bool(current >= high52 * 0.97),
+        "high52Pct": round(current / high52 * 100, 2) if high52 else 0,
+        "volumeRatio50": round(float(volume.iloc[-1]) / average_volume50, 2) if average_volume50 else 0,
+        "_volume20": float(volume.tail(20).sum()),
         "trendTemplate": trend_template,
         "vcp": vcp,
+        "boxBreakout": box_breakout,
         "signals": range_signals(closes, high.tolist(), low.tolist(), volume.tolist()),
         "maAligned": ma_aligned,
+    }
+
+
+def institutional_accumulation(date: str, metrics: dict[str, dict[str, Any]]) -> dict[str, bool]:
+    """Flag 20-session foreign plus institutional net buying over 1% of volume."""
+    start = (datetime.strptime(date, "%Y%m%d") - timedelta(days=35)).strftime("%Y%m%d")
+    net_volume: dict[str, float] = {}
+    try:
+        for market in ("KOSPI", "KOSDAQ"):
+            for investor in ("외국인", "기관합계"):
+                frame = stock.get_market_net_purchases_of_equities_by_ticker(start, date, market=market, investor=investor)
+                if frame is None or frame.empty:
+                    continue
+                series = first_column(frame, "순매수거래량", "Net Purchase Volume")
+                for ticker, value in series.items():
+                    key = str(ticker)
+                    net_volume[key] = net_volume.get(key, 0.0) + float(value)
+    except Exception as error:
+        LOGGER.warning("기관·외국인 수급 수집 실패: %s", error)
+    return {
+        ticker: bool(item.get("_volume20", 0) > 0 and net_volume.get(ticker, 0) / item["_volume20"] >= 0.01)
+        for ticker, item in metrics.items()
     }
 
 
@@ -225,6 +257,11 @@ def main() -> None:
 
     current_scores = percentile_scores({ticker: item["rsRaw"] for ticker, item in metrics.items()})
     previous_scores = percentile_scores({ticker: item["rsRawPrevious"] for ticker, item in metrics.items()})
+    accumulation = institutional_accumulation(date, metrics)
+    market_uptrends = {
+        market: bool(series.iloc[-1] > (average(series.tolist(), 50) or float("inf")) > (average(series.tolist(), 200) or float("inf")))
+        for market, series in benchmark_series.items()
+    }
     items = []
     for ticker, item in metrics.items():
         rs = current_scores[ticker]
@@ -241,13 +278,28 @@ def main() -> None:
                 item["_ma200Prior"], item["_low52"], item["_high52"], rs,
             ),
             "pocketPivot": "pocketPivot" in item["signals"],
+            "institutionalAccumulation": accumulation.get(ticker, False),
+            "marketUptrend": market_uptrends.get(item["market"], False),
         })
         item.pop("rsRaw", None)
         item.pop("rsRawPrevious", None)
         item.pop("_ma200Prior", None)
         item.pop("_low52", None)
         item.pop("_high52", None)
+        item.pop("_volume20", None)
         items.append(item)
+
+    dart_key = os.environ.get("DART_API_KEY", "").strip()
+    financial_count = 0
+    if dart_key:
+        LOGGER.info("OpenDART 재무 데이터 수집 시작")
+        financials = collect_financials(dart_key, items, now)
+        financial_count = len(financials)
+        for item in items:
+            score_item(item, financials.get(item["ticker"]), market_uptrends.get(item["market"], False))
+        LOGGER.info("%s개 종목의 OpenDART 재무 데이터 반영", financial_count)
+    else:
+        LOGGER.warning("DART_API_KEY가 없어 SEPA·CANSLIM 재무 항목을 건너뜁니다.")
 
     items.sort(key=lambda row: (-row["rs"], -row["marketCap"], row["ticker"]))
     output = Path(args.output)
@@ -255,9 +307,10 @@ def main() -> None:
     payload = {
         "region": "kr",
         "updatedAt": f"{datetime.strptime(date, '%Y%m%d').strftime('%Y-%m-%d')} {now.strftime('%H:%M')} KST",
-        "source": "KRX·Naver adjusted OHLCV via pykrx",
+        "source": "KRX·Naver adjusted OHLCV via pykrx" + (" · OpenDART" if dart_key else ""),
         "universeCount": len(metrics),
         "publishedCount": len(items),
+        "financialCount": financial_count,
         "items": items,
     }
     output.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
