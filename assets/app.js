@@ -23,15 +23,18 @@ function normalizeItem(raw) {
   if (raw.pocketPivot) inferredSignals.push("pocketPivot");
   const trendScore = numberOrNull(raw.trendScore) ?? [raw.trendTemplate, raw.maAligned, raw.newHigh52, raw.rs >= 70].filter(Boolean).length * 2;
   return {
-    ...raw, trendScore: Math.min(8, trendScore), sepaGrade: raw.sepaGrade || "-", quarterEpsGrowth: numberOrNull(raw.quarterEpsGrowth),
-    quarterSalesGrowth: numberOrNull(raw.quarterSalesGrowth), annualEpsGrowth: numberOrNull(raw.annualEpsGrowth), roe: numberOrNull(raw.roe),
+    ...raw, trendScore: Math.min(8, trendScore), sepaGrade: raw.sepaGrade || "-", dilutedEpsGrowthYoY: numberOrNull(raw.dilutedEpsGrowthYoY),
+    revenueGrowthYoY: numberOrNull(raw.revenueGrowthYoY), operatingCashFlowTtm: numberOrNull(raw.operatingCashFlowTtm),
+    ebitdaCapexInterestCoverageTtm: numberOrNull(raw.ebitdaCapexInterestCoverageTtm), annualEpsGrowth: numberOrNull(raw.annualEpsGrowth), roe: numberOrNull(raw.roe),
     canSlimScore: numberOrNull(raw.canSlimScore), canSlim: raw.canSlim || {}, signals: [...new Set([...(raw.signals || []), ...inferredSignals])],
-    boxBreakout: Boolean(raw.boxBreakout), epsExplosion: Boolean(raw.epsExplosion || Number(raw.quarterEpsGrowth) >= 100)
+    boxBreakout: Boolean(raw.boxBreakout), epsExplosion: Boolean(raw.epsExplosion || Number(raw.dilutedEpsGrowthYoY) >= 100)
   };
 }
 function formatNumber(value) { return finite(value) ? Math.round(Number(value)).toLocaleString("ko-KR") : "-"; }
 function formatPercent(value) { return finite(value) ? `${Number(value) > 0 ? "+" : ""}${Number(value).toFixed(1)}%` : "-"; }
 function formatMarketCap(value) { if (!finite(value)) return "-"; return value >= 1e12 ? `${(value / 1e12).toFixed(1)}조` : `${Math.round(value / 1e8).toLocaleString("ko-KR")}억`; }
+function formatCashFlow(value) { if (!finite(value)) return "-"; const amount = Number(value); return Math.abs(amount) >= 1e12 ? `${(amount / 1e12).toFixed(2)}조` : `${(amount / 1e8).toLocaleString("ko-KR", { maximumFractionDigits: 1 })}억`; }
+function formatCoverage(value) { return finite(value) ? `${Number(value).toFixed(1)}배` : "-"; }
 function changeClass(value) { return value > 0 ? "positive" : value < 0 ? "negative" : ""; }
 function marketLink(item) { return state.region === "kr" ? `https://stock.naver.com/domestic/stock/${item.ticker}/price` : `https://finance.yahoo.com/quote/${encodeURIComponent(item.ticker)}`; }
 function renderSignalFilters() {
@@ -55,7 +58,7 @@ function updateAvailability(rawItems) {
   if (rawItems.some((item) => item.pocketPivot)) state.availableSignals.add("pocketPivot");
 
   const controls = {
-    "#sepaGrade": "sepaGrade", "#minQuarterEps": "quarterEpsGrowth", "#minQuarterSales": "quarterSalesGrowth",
+    "#sepaGrade": "sepaGrade", "#minQuarterEps": "dilutedEpsGrowthYoY", "#minQuarterSales": "revenueGrowthYoY",
     "#minAnnualEps": "annualEpsGrowth", "#minCanSlim": "canSlimScore", "#minRoe": "roe"
   };
   Object.entries(controls).forEach(([selector, field]) => setControlAvailability(selector, state.availableFields.has(field)));
@@ -65,7 +68,7 @@ function updateAvailability(rawItems) {
     input.closest("label")?.setAttribute("title", available ? "" : "데이터 연결 전");
   });
 
-  const sepaReady = ["quarterEpsGrowth", "quarterSalesGrowth", "annualEpsGrowth"].some((field) => state.availableFields.has(field));
+  const sepaReady = ["dilutedEpsGrowthYoY", "revenueGrowthYoY", "annualEpsGrowth"].some((field) => state.availableFields.has(field));
   const canSlimReady = state.availableFields.has("canSlimScore");
   const financialCount = Number(state.meta.financialCount || rawItems.filter((item) => item.financialDataAvailable).length);
   const financialStatus = financialCount ? `· DART ${financialCount.toLocaleString("ko-KR")}개 반영` : "· DART 연결 전";
@@ -76,7 +79,7 @@ function updateAvailability(rawItems) {
   state.signals = new Set([...state.signals].filter((signal) => state.availableSignals.has(signal)));
   renderSignalFilters();
 
-  const unavailableSorts = { sepaGrade: "sepaGrade", quarterEpsGrowth: "quarterEpsGrowth", quarterSalesGrowth: "quarterSalesGrowth", canSlimScore: "canSlimScore" };
+  const unavailableSorts = { sepaGrade: "sepaGrade", dilutedEpsGrowthYoY: "dilutedEpsGrowthYoY", revenueGrowthYoY: "revenueGrowthYoY", operatingCashFlowTtm: "operatingCashFlowTtm", ebitdaCapexInterestCoverageTtm: "ebitdaCapexInterestCoverageTtm", canSlimScore: "canSlimScore" };
   Object.entries(unavailableSorts).forEach(([sort, field]) => $("th[data-sort=\"" + sort + "\"]")?.classList.toggle("unavailable-column", !state.availableFields.has(field)));
 }
 
@@ -101,8 +104,8 @@ function visibleItems() {
   const query = state.query.trim().toLowerCase();
   const list = state.data.filter((item) => {
     if (item.rs < state.minRs || item.trendScore < state.minTrend || !gradePass(item.sepaGrade)) return false;
-    if (state.minQuarterEps !== null && (item.quarterEpsGrowth === null || item.quarterEpsGrowth < state.minQuarterEps)) return false;
-    if (state.minQuarterSales !== null && (item.quarterSalesGrowth === null || item.quarterSalesGrowth < state.minQuarterSales)) return false;
+    if (state.minQuarterEps !== null && (item.dilutedEpsGrowthYoY === null || item.dilutedEpsGrowthYoY < state.minQuarterEps)) return false;
+    if (state.minQuarterSales !== null && (item.revenueGrowthYoY === null || item.revenueGrowthYoY < state.minQuarterSales)) return false;
     if (state.minAnnualEps !== null && (item.annualEpsGrowth === null || item.annualEpsGrowth < state.minAnnualEps)) return false;
     if (state.minCanSlim && (item.canSlimScore === null || item.canSlimScore < state.minCanSlim)) return false;
     if (state.minRoe !== null && (item.roe === null || item.roe < state.minRoe)) return false;
@@ -117,13 +120,13 @@ function visibleItems() {
 function signalBadges(item) { if (!item.signals.length) return '<span class="muted">-</span>'; return item.signals.slice(0, 3).map((key) => `<span class="signal-chip">${SIGNAL_LABELS[key] || key}</span>`).join("") + (item.signals.length > 3 ? `<span class="more-chip">+${item.signals.length - 3}</span>` : ""); }
 function canSlimBadges(item) { return ["C", "A", "N", "S", "L", "I", "M"].map((key) => `<span class="letter-badge ${item.canSlim[key] ? "on" : ""}">${key}</span>`).join(""); }
 function detailRow(item) {
-  return `<tr class="detail-row"><td colspan="11"><div class="detail-grid"><section><strong>CANSLIM 구성</strong><div class="letter-list">${canSlimBadges(item)}</div><small>ROE ${formatPercent(item.roe)}</small></section><section><strong>SEPA 성장</strong><span>연간 EPS ${formatPercent(item.annualEpsGrowth)}</span><span>박스 돌파 ${item.boxBreakout ? "O" : "-"}</span><span>EPS 폭발 ${item.epsExplosion ? "O" : "-"}</span></section><section><strong>가격 구조</strong><span>Trend Template ${item.trendTemplate ? "O" : "-"}</span><span>VCP ${item.vcp ? "O" : "-"}</span><span>RS Line NEW ${item.rsLineNew ? "O" : "-"}</span></section><section><strong>감지 신호</strong><div class="signal-cell">${signalBadges(item)}</div></section></div></td></tr>`;
+  return `<tr class="detail-row"><td colspan="13"><div class="detail-grid"><section><strong>CANSLIM 구성</strong><div class="letter-list">${canSlimBadges(item)}</div><small>ROE ${formatPercent(item.roe)}</small></section><section><strong>SEPA 성장</strong><span>연간 EPS ${formatPercent(item.annualEpsGrowth)}</span><span>박스 돌파 ${item.boxBreakout ? "O" : "-"}</span><span>EPS 폭발 ${item.epsExplosion ? "O" : "-"}</span></section><section><strong>현금 창출력</strong><span>영업현금흐름 TTM ${formatCashFlow(item.operatingCashFlowTtm)}</span><span>(EBITDA−CAPEX)/이자 ${formatCoverage(item.ebitdaCapexInterestCoverageTtm)}</span></section><section><strong>감지 신호</strong><div class="signal-cell">${signalBadges(item)}</div></section></div></td></tr>`;
 }
 function renderRows(items) {
-  const body = $("#stockRows"); if (!items.length) { body.innerHTML = '<tr class="empty-row"><td colspan="11">조건에 맞는 종목이 없습니다.</td></tr>'; return; }
+  const body = $("#stockRows"); if (!items.length) { body.innerHTML = '<tr class="empty-row"><td colspan="13">조건에 맞는 종목이 없습니다.</td></tr>'; return; }
   body.innerHTML = items.map((item) => {
     const watchKey = `${state.region}:${item.ticker}`, watched = state.watchlist.has(watchKey), compared = state.compare.has(item.ticker), change = Number(item.changePct) || 0, expanded = state.expanded.has(item.ticker);
-    const row = `<tr><td><div class="stock-cell"><button class="watch-button ${watched ? "active" : ""}" data-watch="${item.ticker}" type="button">${watched ? "★" : "☆"}</button><div><a class="stock-name" href="${marketLink(item)}" target="_blank" rel="noopener noreferrer">${item.name}</a><span class="stock-meta"><span>${item.ticker} · ${item.market}</span>${item.theme ? `<span class="theme-chip">${item.theme}</span>` : ""}</span></div><button class="compare-button ${compared ? "active" : ""}" data-compare="${item.ticker}" type="button">${compared ? "✓" : "+"}</button></div></td><td class="text-right"><span class="price">${formatNumber(item.close)}</span><span class="change ${changeClass(change)}">${change > 0 ? "+" : ""}${change.toFixed(1)}%</span></td><td class="text-right">${formatMarketCap(item.marketCap)}<span class="size-label">${item.size || ""}</span></td><td class="text-center"><span class="rs-badge ${item.rs >= 90 ? "rs-elite" : "rs-strong"}">${item.rs}</span></td><td class="text-center"><strong>${item.trendScore}/8</strong></td><td class="text-center"><span class="grade-badge grade-${item.sepaGrade}">${item.sepaGrade}</span></td><td class="text-right ${changeClass(item.quarterEpsGrowth || 0)}">${formatPercent(item.quarterEpsGrowth)}</td><td class="text-right ${changeClass(item.quarterSalesGrowth || 0)}">${formatPercent(item.quarterSalesGrowth)}</td><td class="text-center">${item.canSlimScore === null ? "-" : `<span class="can-score">${item.canSlimScore}<small>/11</small></span>`}</td><td><div class="signal-cell">${signalBadges(item)}</div></td><td class="text-center"><button class="detail-button" data-detail="${item.ticker}" type="button" aria-expanded="${expanded}">${expanded ? "닫기" : "보기"}</button></td></tr>`;
+    const row = `<tr><td><div class="stock-cell"><button class="watch-button ${watched ? "active" : ""}" data-watch="${item.ticker}" type="button">${watched ? "★" : "☆"}</button><div><a class="stock-name" href="${marketLink(item)}" target="_blank" rel="noopener noreferrer">${item.name}</a><span class="stock-meta"><span>${item.ticker} · ${item.market}</span>${item.theme ? `<span class="theme-chip">${item.theme}</span>` : ""}</span></div><button class="compare-button ${compared ? "active" : ""}" data-compare="${item.ticker}" type="button">${compared ? "✓" : "+"}</button></div></td><td class="text-right"><span class="price">${formatNumber(item.close)}</span><span class="change ${changeClass(change)}">${change > 0 ? "+" : ""}${change.toFixed(1)}%</span></td><td class="text-right">${formatMarketCap(item.marketCap)}<span class="size-label">${item.size || ""}</span></td><td class="text-center"><span class="rs-badge ${item.rs >= 90 ? "rs-elite" : "rs-strong"}">${item.rs}</span></td><td class="text-center"><strong>${item.trendScore}/8</strong></td><td class="text-center"><span class="grade-badge grade-${item.sepaGrade}">${item.sepaGrade}</span></td><td class="text-right ${changeClass(item.dilutedEpsGrowthYoY || 0)}">${formatPercent(item.dilutedEpsGrowthYoY)}</td><td class="text-right ${changeClass(item.revenueGrowthYoY || 0)}">${formatPercent(item.revenueGrowthYoY)}</td><td class="text-right ${changeClass(item.operatingCashFlowTtm || 0)}">${formatCashFlow(item.operatingCashFlowTtm)}</td><td class="text-right ${changeClass(item.ebitdaCapexInterestCoverageTtm || 0)}">${formatCoverage(item.ebitdaCapexInterestCoverageTtm)}</td><td class="text-center">${item.canSlimScore === null ? "-" : `<span class="can-score">${item.canSlimScore}<small>/11</small></span>`}</td><td><div class="signal-cell">${signalBadges(item)}</div></td><td class="text-center"><button class="detail-button" data-detail="${item.ticker}" type="button" aria-expanded="${expanded}">${expanded ? "닫기" : "보기"}</button></td></tr>`;
     return row + (expanded ? detailRow(item) : "");
   }).join("");
 }

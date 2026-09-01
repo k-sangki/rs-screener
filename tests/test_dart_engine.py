@@ -20,13 +20,25 @@ from dart_engine import (
 )
 
 
-def statement(account_id, account_name, statement, current, previous=None, prior=None, previous_quarter=None):
+def statement(
+    account_id,
+    account_name,
+    statement_type,
+    current,
+    previous=None,
+    prior=None,
+    previous_quarter=None,
+    current_ytd=None,
+    previous_ytd=None,
+):
     return {
         "account_id": account_id,
         "account_nm": account_name,
-        "sj_div": statement,
+        "sj_div": statement_type,
         "thstrm_amount": current,
+        "thstrm_add_amount": current_ytd,
         "frmtrm_amount": previous,
+        "frmtrm_add_amount": previous_ytd,
         "bfefrmtrm_amount": prior,
         "frmtrm_q_amount": previous_quarter,
     }
@@ -59,22 +71,38 @@ class DartPeriodTests(unittest.TestCase):
 class FinancialMetricTests(unittest.TestCase):
     def test_growth_and_roe(self):
         current = [
-            statement("ifrs-full_BasicEarningsLossPerShare", "기본주당이익", "IS", "200", previous_quarter="100"),
+            statement("ifrs-full_DilutedEarningsLossPerShare", "희석주당이익", "IS", "200", previous_quarter="100"),
             statement("ifrs-full_Revenue", "매출액", "IS", "1500", previous_quarter="1000"),
+            statement("ifrs-full_CashFlowsFromUsedInOperatingActivities", "영업활동현금흐름", "CF", "350", "250"),
+            statement("ifrs-full_ProfitLossFromOperatingActivities", "영업이익", "IS", "90", current_ytd="180", previous_ytd="120"),
+            statement("ifrs-full_AdjustmentsForDepreciationExpense", "감가상각비", "CF", "40", "30"),
+            statement("ifrs-full_AdjustmentsForAmortisationExpense", "무형자산상각비", "CF", "10", "8"),
+            statement("ifrs-full_PaymentsToAcquirePropertyPlantAndEquipment", "유형자산의 취득", "CF", "70", "50"),
+            statement("ifrs-full_PaymentsToAcquireIntangibleAssets", "무형자산의 취득", "CF", "10", "5"),
+            statement("ifrs-full_InterestExpense", "이자비용", "IS", "12", current_ytd="20", previous_ytd="15"),
         ]
         annual = [
             statement("ifrs-full_BasicEarningsLossPerShare", "기본주당이익", "IS", "300", "200", "100"),
             statement("ifrs-full_ProfitLoss", "당기순이익", "IS", "120"),
             statement("ifrs-full_Equity", "자본총계", "BS", "1000", "800"),
+            statement("ifrs-full_CashFlowsFromUsedInOperatingActivities", "영업활동현금흐름", "CF", "1000"),
+            statement("ifrs-full_ProfitLossFromOperatingActivities", "영업이익", "IS", "300"),
+            statement("ifrs-full_AdjustmentsForDepreciationExpense", "감가상각비", "CF", "100"),
+            statement("ifrs-full_AdjustmentsForAmortisationExpense", "무형자산상각비", "CF", "20"),
+            statement("ifrs-full_PaymentsToAcquirePropertyPlantAndEquipment", "유형자산의 취득", "CF", "200"),
+            statement("ifrs-full_PaymentsToAcquireIntangibleAssets", "무형자산의 취득", "CF", "30"),
+            statement("ifrs-full_InterestExpense", "이자비용", "IS", "40"),
         ]
 
-        result = calculate_financial_metrics(current, annual)
+        result = calculate_financial_metrics(current, annual, REPORT_HALF)
 
-        self.assertEqual(result["quarterEpsGrowth"], 100)
-        self.assertEqual(result["quarterSalesGrowth"], 50)
+        self.assertEqual(result["dilutedEpsGrowthYoY"], 100)
+        self.assertEqual(result["revenueGrowthYoY"], 50)
         self.assertEqual(result["annualEpsGrowth"], 75)
         self.assertEqual(result["annualEpsLatestGrowth"], 50)
         self.assertAlmostEqual(result["roe"], 13.33)
+        self.assertEqual(result["operatingCashFlowTtm"], 1100)
+        self.assertEqual(result["ebitdaCapexInterestCoverageTtm"], 5.27)
 
     def test_sepa_and_canslim_score(self):
         item = {
@@ -86,8 +114,8 @@ class FinancialMetricTests(unittest.TestCase):
             "institutionalAccumulation": True,
         }
         financial = {
-            "quarterEpsGrowth": 100,
-            "quarterSalesGrowth": 50,
+            "dilutedEpsGrowthYoY": 100,
+            "revenueGrowthYoY": 50,
             "annualEpsGrowth": 75,
             "annualEpsLatestGrowth": 50,
             "annualEpsSeries": [300, 200, 100],

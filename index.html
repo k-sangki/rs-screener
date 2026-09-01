@@ -62,8 +62,8 @@
         <legend>SEPA · 성장성 <span id="sepaAvailability" class="availability-note"></span></legend>
         <div class="select-grid">
           <label>SEPA 등급<select id="sepaGrade"><option value="ALL">전체</option><option value="S">S만</option><option value="A">S+A</option><option value="B">S+A+B</option></select></label>
-          <label>분기 EPS<select id="minQuarterEps"><option value="">전체</option><option value="25">+25% 이상</option><option value="50">+50% 이상</option><option value="100">+100% 이상</option></select></label>
-          <label>분기 매출<select id="minQuarterSales"><option value="">전체</option><option value="10">+10% 이상</option><option value="25">+25% 이상</option></select></label>
+          <label>희석 주당순이익 성장률(분기 YoY)<select id="minQuarterEps"><option value="">전체</option><option value="25">+25% 이상</option><option value="50">+50% 이상</option><option value="100">+100% 이상</option></select></label>
+          <label>매출 성장률(분기 YoY)<select id="minQuarterSales"><option value="">전체</option><option value="10">+10% 이상</option><option value="25">+25% 이상</option></select></label>
           <label>연간 EPS<select id="minAnnualEps"><option value="">전체</option><option value="25">+25% 이상</option><option value="50">+50% 이상</option></select></label>
         </div>
         <div class="check-list">
@@ -105,8 +105,10 @@
               <th class="sortable text-center active" data-sort="rs">RS <span>▼</span></th>
               <th class="sortable text-center" data-sort="trendScore">SEPA Trend <span></span></th>
               <th class="sortable text-center" data-sort="sepaGrade">등급 <span></span></th>
-              <th class="sortable text-right" data-sort="quarterEpsGrowth">분기 EPS <span></span></th>
-              <th class="sortable text-right" data-sort="quarterSalesGrowth">분기 매출 <span></span></th>
+              <th class="sortable text-right metric-heading" data-sort="dilutedEpsGrowthYoY">희석 주당순이익 성장률 <small>분기 YoY</small><span></span></th>
+              <th class="sortable text-right metric-heading" data-sort="revenueGrowthYoY">매출 성장률 <small>분기 YoY</small><span></span></th>
+              <th class="sortable text-right metric-heading" data-sort="operatingCashFlowTtm">영업활동 현금흐름 <small>TTM</small><span></span></th>
+              <th class="sortable text-right metric-heading" data-sort="ebitdaCapexInterestCoverageTtm" title="EBITDA에서 자본지출을 차감한 금액의 이자보상비율(후행 12개월)">(EBITDA−CAPEX) 이자보상 <small>TTM</small><span></span></th>
               <th class="sortable text-center" data-sort="canSlimScore">CANSLIM <span></span></th>
               <th class="text-left">SIGNALS</th>
               <th class="text-center">상세</th>

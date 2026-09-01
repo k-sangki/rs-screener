@@ -20,6 +20,7 @@ REPORT_Q1 = "11013"
 REPORT_HALF = "11012"
 REPORT_Q3 = "11014"
 REPORT_ANNUAL = "11011"
+CACHE_SCHEMA_VERSION = 2
 LOGGER = logging.getLogger("dart_engine")
 
 
@@ -60,7 +61,7 @@ def latest_period(now: datetime) -> tuple[int, str]:
 
 def financial_period_key(now: datetime) -> list[Any]:
     year, report = latest_period(now)
-    return [year, report, now.year - 1]
+    return [CACHE_SCHEMA_VERSION, year, report, now.year - 1]
 
 
 def load_cached_financials(path: Path, now: datetime, max_age_days: int = 7) -> dict[str, dict[str, Any]] | None:
@@ -152,9 +153,14 @@ def _account_score(row: dict[str, Any], ids: tuple[str, ...], names: tuple[str, 
 
 def find_account(rows: list[dict[str, Any]], kind: str) -> dict[str, Any] | None:
     definitions = {
-        "eps": (
+        "basic_eps": (
             ("BasicEarningsLossPerShare", "EarningsPerShare"),
             ("기본주당이익", "기본주당순이익", "주당이익"),
+            {"IS", "CIS"},
+        ),
+        "diluted_eps": (
+            ("DilutedEarningsLossPerShare", "DilutedEarningsPerShare"),
+            ("희석주당순이익", "희석주당이익", "희석주당손익", "기본및희석주당이익"),
             {"IS", "CIS"},
         ),
         "revenue": (
@@ -172,6 +178,46 @@ def find_account(rows: list[dict[str, Any]], kind: str) -> dict[str, Any] | None
             ("지배기업소유주지분", "자본총계"),
             {"BS"},
         ),
+        "operating_cash_flow": (
+            ("CashFlowsFromUsedInOperatingActivities", "CashFlowsFromOperatingActivities"),
+            ("영업활동으로인한현금흐름", "영업활동현금흐름", "영업활동현금흐름순액"),
+            {"CF"},
+        ),
+        "operating_profit": (
+            ("ProfitLossFromOperatingActivities", "OperatingProfitLoss"),
+            ("영업이익", "영업손익"),
+            {"IS", "CIS"},
+        ),
+        "depreciation_amortization": (
+            ("AdjustmentsForDepreciationAndAmortisationExpense", "DepreciationAndAmortisationExpense"),
+            ("감가상각비및무형자산상각비", "감가상각비와무형자산상각비", "감가상각비및상각비"),
+            {"CF"},
+        ),
+        "depreciation": (
+            ("AdjustmentsForDepreciationExpense", "DepreciationExpense"),
+            ("유형자산감가상각비", "감가상각비"),
+            {"CF"},
+        ),
+        "amortization": (
+            ("AdjustmentsForAmortisationExpense", "AmortisationExpense"),
+            ("무형자산상각비",),
+            {"CF"},
+        ),
+        "capex_ppe": (
+            ("PaymentsToAcquirePropertyPlantAndEquipment",),
+            ("유형자산의취득", "유형자산취득"),
+            {"CF"},
+        ),
+        "capex_intangible": (
+            ("PaymentsToAcquireIntangibleAssets",),
+            ("무형자산의취득", "무형자산취득"),
+            {"CF"},
+        ),
+        "interest_expense": (
+            ("InterestExpense",),
+            ("이자비용",),
+            {"IS", "CIS"},
+        ),
     }
     ids, names, statements = definitions[kind]
     candidates = [row for row in rows if row.get("sj_div") in statements]
@@ -179,18 +225,63 @@ def find_account(rows: list[dict[str, Any]], kind: str) -> dict[str, Any] | None
     return ranked[0] if ranked and _account_score(ranked[0], ids, names) >= 0 else None
 
 
-def calculate_financial_metrics(current_rows: list[dict[str, Any]], annual_rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _first_amount(row: dict[str, Any] | None, *keys: str) -> float | None:
+    if not row:
+        return None
+    for key in keys:
+        value = parse_amount(row.get(key))
+        if value is not None:
+            return value
+    return None
+
+
+def ttm_account_amount(
+    current_rows: list[dict[str, Any]],
+    annual_rows: list[dict[str, Any]],
+    kind: str,
+    current_report: str,
+) -> float | None:
+    annual_row = find_account(annual_rows, kind)
+    annual_amount = _first_amount(annual_row, "thstrm_amount")
+    if annual_amount is None:
+        return None
+    if current_report == REPORT_ANNUAL:
+        return annual_amount
+    current_row = find_account(current_rows, kind)
+    current_ytd = _first_amount(current_row, "thstrm_add_amount", "thstrm_amount")
+    previous_ytd = _first_amount(current_row, "frmtrm_add_amount", "frmtrm_q_amount", "frmtrm_amount")
+    if current_ytd is None or previous_ytd is None:
+        return None
+    return annual_amount + current_ytd - previous_ytd
+
+
+def _ttm_component_sum(
+    current_rows: list[dict[str, Any]],
+    annual_rows: list[dict[str, Any]],
+    kinds: tuple[str, ...],
+    current_report: str,
+) -> float | None:
+    values = [ttm_account_amount(current_rows, annual_rows, kind, current_report) for kind in kinds]
+    available = [abs(value) for value in values if value is not None]
+    return sum(available) if available else None
+
+
+def calculate_financial_metrics(
+    current_rows: list[dict[str, Any]],
+    annual_rows: list[dict[str, Any]],
+    current_report: str = REPORT_HALF,
+) -> dict[str, Any]:
     result: dict[str, Any] = {}
-    current_eps = find_account(current_rows, "eps")
+    current_eps = find_account(current_rows, "diluted_eps")
     current_sales = find_account(current_rows, "revenue")
-    annual_eps = find_account(annual_rows, "eps")
+    annual_eps = find_account(annual_rows, "basic_eps")
     annual_profit = find_account(annual_rows, "profit")
     annual_equity = find_account(annual_rows, "equity")
 
     if current_eps:
-        result["quarterEpsGrowth"] = growth_percent(parse_amount(current_eps.get("thstrm_amount")), parse_amount(current_eps.get("frmtrm_q_amount")))
+        result["dilutedEpsGrowthYoY"] = growth_percent(parse_amount(current_eps.get("thstrm_amount")), parse_amount(current_eps.get("frmtrm_q_amount")))
     if current_sales:
-        result["quarterSalesGrowth"] = growth_percent(parse_amount(current_sales.get("thstrm_amount")), parse_amount(current_sales.get("frmtrm_q_amount")))
+        result["revenueGrowthYoY"] = growth_percent(parse_amount(current_sales.get("thstrm_amount")), parse_amount(current_sales.get("frmtrm_q_amount")))
     if annual_eps:
         series = [parse_amount(annual_eps.get(key)) for key in ("thstrm_amount", "frmtrm_amount", "bfefrmtrm_amount")]
         result["annualEpsSeries"] = series
@@ -206,6 +297,21 @@ def calculate_financial_metrics(current_rows: list[dict[str, Any]], annual_rows:
         average_equity = (equity_now + equity_prior) / 2 if equity_now and equity_prior else None
         if profit is not None and average_equity and average_equity > 0:
             result["roe"] = round(profit / average_equity * 100, 2)
+
+    operating_cash_flow = ttm_account_amount(current_rows, annual_rows, "operating_cash_flow", current_report)
+    operating_profit = ttm_account_amount(current_rows, annual_rows, "operating_profit", current_report)
+    depreciation_amortization = ttm_account_amount(current_rows, annual_rows, "depreciation_amortization", current_report)
+    if depreciation_amortization is None:
+        depreciation_amortization = _ttm_component_sum(
+            current_rows, annual_rows, ("depreciation", "amortization"), current_report
+        )
+    capex = _ttm_component_sum(current_rows, annual_rows, ("capex_ppe", "capex_intangible"), current_report)
+    interest_expense = ttm_account_amount(current_rows, annual_rows, "interest_expense", current_report)
+    if operating_cash_flow is not None:
+        result["operatingCashFlowTtm"] = round(operating_cash_flow)
+    if all(value is not None for value in (operating_profit, depreciation_amortization, capex, interest_expense)) and abs(interest_expense) > 0:
+        ebitda_less_capex = operating_profit + abs(depreciation_amortization) - abs(capex)
+        result["ebitdaCapexInterestCoverageTtm"] = round(ebitda_less_capex / abs(interest_expense), 2)
     return {key: value for key, value in result.items() if value is not None}
 
 
@@ -222,7 +328,7 @@ def collect_financials(api_key: str, items: list[dict[str, Any]], now: datetime,
     def collect_one(corp_code: str) -> tuple[str, dict[str, Any]]:
         current = request_statement(api_key, corp_code, current_year, current_report)
         annual = current if current_report == REPORT_ANNUAL and current_year == annual_year else request_statement(api_key, corp_code, annual_year, REPORT_ANNUAL)
-        return corp_code, calculate_financial_metrics(current, annual)
+        return corp_code, calculate_financial_metrics(current, annual, current_report)
 
     by_corp: dict[str, dict[str, Any]] = {}
     failures: list[tuple[str, Exception]] = []
@@ -252,8 +358,8 @@ def collect_financials(api_key: str, items: list[dict[str, Any]], now: datetime,
 def score_item(item: dict[str, Any], financial: dict[str, Any] | None, market_uptrend: bool) -> None:
     financial = financial or {}
     item.update({key: value for key, value in financial.items() if key != "annualEpsSeries"})
-    q_eps = financial.get("quarterEpsGrowth")
-    q_sales = financial.get("quarterSalesGrowth")
+    q_eps = financial.get("dilutedEpsGrowthYoY")
+    q_sales = financial.get("revenueGrowthYoY")
     annual_growth = financial.get("annualEpsGrowth")
     annual_latest = financial.get("annualEpsLatestGrowth")
     annual_series = financial.get("annualEpsSeries") or []

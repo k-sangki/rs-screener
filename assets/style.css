@@ -110,12 +110,14 @@ input[type="checkbox"] { accent-color: var(--accent); }
 
 .table-card { border: 1px solid var(--line); border-radius: 15px; overflow: hidden; background: var(--surface); box-shadow: var(--shadow); }
 .table-scroll { overflow-x: auto; }
-table { width: 100%; min-width: 1420px; border-collapse: collapse; font-size: 13px; }
+table { width: 100%; min-width: 1780px; border-collapse: collapse; font-size: 13px; }
 th { position: sticky; top: 0; z-index: 1; padding: 13px 12px; background: var(--surface-2); color: var(--muted); border-bottom: 1px solid var(--line); white-space: nowrap; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
 th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover, th.sortable.active { color: var(--text); }
 th.unavailable-column { cursor: default; opacity: .45; }
 th.unavailable-column:hover { color: var(--muted); }
+.metric-heading { line-height: 1.35; }
+.metric-heading small { display: block; color: var(--muted); font-size: 9px; font-weight: 650; letter-spacing: .02em; }
 td { padding: 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 tbody tr:last-child td { border-bottom: 0; }
 tbody tr:hover { background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
