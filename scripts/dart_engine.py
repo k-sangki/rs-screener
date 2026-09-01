@@ -6,6 +6,7 @@ import io
 import json
 import logging
 import re
+import threading
 import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -20,8 +21,9 @@ REPORT_Q1 = "11013"
 REPORT_HALF = "11012"
 REPORT_Q3 = "11014"
 REPORT_ANNUAL = "11011"
-CACHE_SCHEMA_VERSION = 2
+CACHE_SCHEMA_VERSION = 3
 LOGGER = logging.getLogger("dart_engine")
+_THREAD_LOCAL = threading.local()
 
 
 def parse_amount(value: Any) -> float | None:
@@ -116,12 +118,15 @@ def normalize_company_name(name: str) -> str:
 def request_statement(api_key: str, corp_code: str, year: int, report_code: str, timeout: int = 30) -> list[dict[str, Any]]:
     import requests
 
+    if not hasattr(_THREAD_LOCAL, "session"):
+        _THREAD_LOCAL.session = requests.Session()
+    session = _THREAD_LOCAL.session
     params = {"crtfc_key": api_key, "corp_code": corp_code, "bsns_year": str(year), "reprt_code": report_code}
     for fs_div in ("CFS", "OFS"):
         params["fs_div"] = fs_div
         for attempt in range(2):
             try:
-                response = requests.get(f"{DART_BASE}/fnlttSinglAcntAll.json", params=params, timeout=timeout)
+                response = session.get(f"{DART_BASE}/fnlttSinglAcntAll.json", params=params, timeout=timeout)
                 response.raise_for_status()
                 payload = response.json()
                 status = payload.get("status")
@@ -216,7 +221,7 @@ def find_account(rows: list[dict[str, Any]], kind: str) -> dict[str, Any] | None
         "interest_expense": (
             ("InterestExpense",),
             ("이자비용",),
-            {"IS", "CIS"},
+            {"IS", "CIS", "CF"},
         ),
     }
     ids, names, statements = definitions[kind]
@@ -315,7 +320,7 @@ def calculate_financial_metrics(
     return {key: value for key, value in result.items() if value is not None}
 
 
-def collect_financials(api_key: str, items: list[dict[str, Any]], now: datetime, workers: int = 4) -> dict[str, dict[str, Any]]:
+def collect_financials(api_key: str, items: list[dict[str, Any]], now: datetime, workers: int = 6) -> dict[str, dict[str, Any]]:
     stock_map, name_map = download_corp_codes(api_key)
     ticker_to_corp = {
         item["ticker"]: stock_map.get(item["ticker"]) or name_map.get(normalize_company_name(item.get("name", "")))
@@ -334,7 +339,7 @@ def collect_financials(api_key: str, items: list[dict[str, Any]], now: datetime,
     failures: list[tuple[str, Exception]] = []
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {executor.submit(collect_one, code): code for code in corp_codes}
-        for future in as_completed(futures):
+        for index, future in enumerate(as_completed(futures), start=1):
             code = futures[future]
             try:
                 corp_code, metrics = future.result()
@@ -343,6 +348,8 @@ def collect_financials(api_key: str, items: list[dict[str, Any]], now: datetime,
             except Exception as error:
                 failures.append((code, error))
                 LOGGER.warning("OpenDART %s 수집 실패: %s", code, error)
+            if index % 100 == 0:
+                LOGGER.info("OpenDART %s/%s 완료", index, len(futures))
 
     fatal = next(
         (error for _, error in failures if isinstance(error, RuntimeError) and "OpenDART 오류 013" not in str(error)),

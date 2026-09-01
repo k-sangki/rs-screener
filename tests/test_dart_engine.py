@@ -79,7 +79,7 @@ class FinancialMetricTests(unittest.TestCase):
             statement("ifrs-full_AdjustmentsForAmortisationExpense", "무형자산상각비", "CF", "10", "8"),
             statement("ifrs-full_PaymentsToAcquirePropertyPlantAndEquipment", "유형자산의 취득", "CF", "70", "50"),
             statement("ifrs-full_PaymentsToAcquireIntangibleAssets", "무형자산의 취득", "CF", "10", "5"),
-            statement("ifrs-full_InterestExpense", "이자비용", "IS", "12", current_ytd="20", previous_ytd="15"),
+            statement("ifrs-full_AdjustmentsForInterestExpense", "이자비용", "CF", "12", current_ytd="20", previous_ytd="15"),
         ]
         annual = [
             statement("ifrs-full_BasicEarningsLossPerShare", "기본주당이익", "IS", "300", "200", "100"),
@@ -91,7 +91,7 @@ class FinancialMetricTests(unittest.TestCase):
             statement("ifrs-full_AdjustmentsForAmortisationExpense", "무형자산상각비", "CF", "20"),
             statement("ifrs-full_PaymentsToAcquirePropertyPlantAndEquipment", "유형자산의 취득", "CF", "200"),
             statement("ifrs-full_PaymentsToAcquireIntangibleAssets", "무형자산의 취득", "CF", "30"),
-            statement("ifrs-full_InterestExpense", "이자비용", "IS", "40"),
+            statement("ifrs-full_AdjustmentsForInterestExpense", "이자비용", "CF", "40"),
         ]
 
         result = calculate_financial_metrics(current, annual, REPORT_HALF)
