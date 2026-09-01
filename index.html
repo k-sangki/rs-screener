@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="한국과 미국 주식의 상대강도(RS)를 검색하고 비교하는 스크리너">
+  <title>RS Screener</title>
+  <link rel="stylesheet" href="./assets/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="./" aria-label="RS Screener 홈">
+      <span class="brand-mark">RS</span>
+      <span>SCREENER</span>
+    </a>
+    <nav class="site-nav" aria-label="주 메뉴">
+      <a class="active" href="#screener">Screener</a>
+      <button id="watchlistToggle" class="nav-button" type="button">Watchlist <span id="watchCount">0</span></button>
+    </nav>
+    <button id="themeToggle" class="icon-button" type="button" aria-label="다크 모드로 전환">◐</button>
+  </header>
+
+  <main id="screener" class="page-shell">
+    <section class="hero">
+      <p class="eyebrow">RS SCREENER · <span id="regionEyebrow">KR</span></p>
+      <h1 id="pageTitle">KRX 상대강도 스크리너</h1>
+      <p id="pageDescription">RS 점수로 KOSPI·KOSDAQ의 상대적으로 강한 종목을 탐색합니다.</p>
+      <div class="region-tabs" role="tablist" aria-label="시장 선택">
+        <button class="region-tab active" data-region="kr" type="button" role="tab" aria-selected="true">KR</button>
+        <button class="region-tab" data-region="us" type="button" role="tab" aria-selected="false">US</button>
+      </div>
+      <p id="updatedAt" class="updated-at">데이터 불러오는 중…</p>
+    </section>
+
+    <section class="toolbar" aria-label="검색 및 필터">
+      <div class="search-wrap">
+        <span aria-hidden="true">⌕</span>
+        <input id="searchInput" type="search" placeholder="종목코드 또는 이름 검색…" aria-label="종목 검색">
+      </div>
+      <button id="filterToggle" class="secondary-button" type="button" aria-expanded="false">필터 <span>▼</span></button>
+      <button id="resetButton" class="text-button" type="button">초기화</button>
+    </section>
+
+    <section id="filterPanel" class="filter-panel" hidden>
+      <fieldset>
+        <legend>점수</legend>
+        <label for="minRs">RS ≥</label>
+        <select id="minRs">
+          <option value="70">70</option>
+          <option value="80">80</option>
+          <option value="90">90</option>
+        </select>
+      </fieldset>
+      <fieldset class="check-grid">
+        <legend>가격 구조</legend>
+        <label><input type="checkbox" data-filter="trendTemplate"> Minervini Trend Template</label>
+        <label><input type="checkbox" data-filter="vcp"> VCP 후보</label>
+        <label><input type="checkbox" data-filter="pocketPivot"> 포켓 피봇 7일 이내</label>
+        <label><input type="checkbox" data-filter="maAligned"> 이평 정배열</label>
+        <label><input type="checkbox" data-filter="newHigh52"> 52주 신고가</label>
+        <label><input type="checkbox" data-filter="newEntry"> 신규 진입</label>
+        <label><input type="checkbox" data-filter="midCapPlus"> 중형 이상만</label>
+      </fieldset>
+    </section>
+
+    <section class="summary-row" aria-live="polite">
+      <div><strong id="filteredCount">0</strong><span>필터됨</span></div>
+      <div><strong id="rs90Count">0</strong><span>RS 90+</span></div>
+    </section>
+
+    <div id="statusMessage" class="status-message" hidden></div>
+
+    <section class="table-card">
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th class="sortable text-left" data-sort="name">종목 <span></span></th>
+              <th class="sortable text-right" data-sort="close">종가 <span></span></th>
+              <th class="sortable text-right" data-sort="marketCap">시총 <span></span></th>
+              <th class="sortable text-center active" data-sort="rs">RS <span>▼</span></th>
+              <th class="sortable text-center" data-sort="rsLineValue">RS Line <span></span></th>
+              <th class="text-center">신고가</th>
+              <th class="sortable text-right" data-sort="ma50">MA50 <span></span></th>
+              <th class="sortable text-right" data-sort="ma150">MA150 <span></span></th>
+              <th class="sortable text-right" data-sort="ma200">MA200 <span></span></th>
+            </tr>
+          </thead>
+          <tbody id="stockRows"></tbody>
+        </table>
+      </div>
+      <nav class="pagination" aria-label="페이지네이션">
+        <button id="firstPage" type="button">처음</button>
+        <button id="prevPage" type="button">이전</button>
+        <span id="pageIndicator">1 / 1</span>
+        <button id="nextPage" type="button">다음</button>
+        <button id="lastPage" type="button">마지막</button>
+      </nav>
+    </section>
+
+    <section class="guide-card">
+      <h2>RS 점수 기준</h2>
+      <p>최근 약 12개월의 가격 수익률을 가중 계산한 뒤 같은 시장의 유효 종목과 비교한 백분위입니다.</p>
+      <div class="formula-grid">
+        <div><strong>63일</strong><span>40%</span></div>
+        <div><strong>126일</strong><span>20%</span></div>
+        <div><strong>189일</strong><span>20%</span></div>
+        <div><strong>252일</strong><span>20%</span></div>
+      </div>
+      <p class="disclaimer">RS는 과거 가격의 상대 순위이며 매수 신호나 미래 수익을 보장하지 않습니다.</p>
+    </section>
+  </main>
+
+  <aside id="compareBar" class="compare-bar" hidden>
+    <div><strong>비교</strong><span id="compareNames"></span></div>
+    <button id="clearCompare" type="button">비우기</button>
+  </aside>
+
+  <footer>
+    <strong>RS SCREENER</strong>
+    <span>데이터는 투자 참고용이며 정확성과 완전성을 보장하지 않습니다.</span>
+  </footer>
+  <script type="module" src="./assets/app.js"></script>
+</body>
+</html>
