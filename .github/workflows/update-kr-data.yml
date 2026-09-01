@@ -32,7 +32,11 @@ jobs:
           restore-keys: |
             kr-history-
       - run: pip install -r requirements.txt
-      - run: python scripts/collect_kr.py
+      - name: Collect KRX market data
+        run: python scripts/collect_kr.py
+        env:
+          KRX_ID: ${{ secrets.KRX_ID }}
+          KRX_PW: ${{ secrets.KRX_PW }}
       - run: python -m unittest discover -s tests -v
       - name: Commit changed data
         run: |
