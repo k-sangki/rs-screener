@@ -1,4 +1,5 @@
 import sys
+import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
@@ -11,8 +12,10 @@ from dart_engine import (
     REPORT_Q1,
     REPORT_Q3,
     calculate_financial_metrics,
+    load_cached_financials,
     latest_period,
     parse_amount,
+    save_cached_financials,
     score_item,
 )
 
@@ -40,6 +43,17 @@ class DartPeriodTests(unittest.TestCase):
         self.assertEqual(latest_period(datetime(2026, 5, 16)), (2026, REPORT_Q1))
         self.assertEqual(latest_period(datetime(2026, 8, 15)), (2026, REPORT_HALF))
         self.assertEqual(latest_period(datetime(2026, 11, 15)), (2026, REPORT_Q3))
+
+    def test_financial_cache_expires_and_changes_with_period(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "dart.json"
+            fetched = datetime(2026, 8, 20, 12)
+            expected = {"005930": {"quarterEpsGrowth": 30}}
+            save_cached_financials(path, fetched, expected)
+
+            self.assertEqual(load_cached_financials(path, datetime(2026, 8, 25, 12)), expected)
+            self.assertIsNone(load_cached_financials(path, datetime(2026, 8, 28, 13)))
+            self.assertIsNone(load_cached_financials(path, datetime(2026, 11, 15, 12)))
 
 
 class FinancialMetricTests(unittest.TestCase):

@@ -27,9 +27,12 @@ jobs:
           cache: pip
       - uses: actions/cache@v4
         with:
-          path: .cache/kr_history.pkl
-          key: kr-history-${{ github.run_id }}
+          path: |
+            .cache/kr_history.pkl
+            .cache/dart_financials.json
+          key: kr-data-${{ github.run_id }}
           restore-keys: |
+            kr-data-
             kr-history-
       - run: pip install -r requirements.txt
       - name: Collect KRX market data

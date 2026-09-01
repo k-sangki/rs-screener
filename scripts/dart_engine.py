@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import io
+import json
 import logging
 import re
 import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree
 
@@ -54,6 +56,33 @@ def latest_period(now: datetime) -> tuple[int, str]:
     if marker >= (5, 16):
         return now.year, REPORT_Q1
     return now.year - 1, REPORT_ANNUAL
+
+
+def financial_period_key(now: datetime) -> list[Any]:
+    year, report = latest_period(now)
+    return [year, report, now.year - 1]
+
+
+def load_cached_financials(path: Path, now: datetime, max_age_days: int = 7) -> dict[str, dict[str, Any]] | None:
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        fetched_at = datetime.fromisoformat(payload["fetchedAt"])
+        if fetched_at.tzinfo is None and now.tzinfo is not None:
+            fetched_at = fetched_at.replace(tzinfo=now.tzinfo)
+        if payload.get("period") != financial_period_key(now) or now - fetched_at > timedelta(days=max_age_days):
+            return None
+        financials = payload.get("financials")
+        return financials if isinstance(financials, dict) else None
+    except (KeyError, TypeError, ValueError, OSError, json.JSONDecodeError):
+        return None
+
+
+def save_cached_financials(path: Path, now: datetime, financials: dict[str, dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"fetchedAt": now.isoformat(), "period": financial_period_key(now), "financials": financials}
+    path.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 
 
 def download_corp_codes(api_key: str, timeout: int = 40) -> tuple[dict[str, str], dict[str, str]]:

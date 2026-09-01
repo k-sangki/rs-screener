@@ -18,7 +18,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 from pykrx import stock
 
-from dart_engine import collect_financials, score_item
+from dart_engine import collect_financials, load_cached_financials, save_cached_financials, score_item
 from rs_engine import average, market_cap_size, percentile_scores, range_signals, trend_template_score, weighted_return
 
 
@@ -33,6 +33,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", default="data/kr.json")
     parser.add_argument("--cache", default=".cache/kr_history.pkl")
+    parser.add_argument("--dart-cache", default=".cache/dart_financials.json")
     parser.add_argument("--lookback-days", type=int, default=520)
     return parser.parse_args()
 
@@ -292,8 +293,14 @@ def main() -> None:
     dart_key = os.environ.get("DART_API_KEY", "").strip()
     financial_count = 0
     if dart_key:
-        LOGGER.info("OpenDART 재무 데이터 수집 시작")
-        financials = collect_financials(dart_key, items, now)
+        dart_cache_path = Path(args.dart_cache)
+        financials = load_cached_financials(dart_cache_path, now)
+        if financials is None:
+            LOGGER.info("OpenDART 재무 데이터 수집 시작")
+            financials = collect_financials(dart_key, items, now)
+            save_cached_financials(dart_cache_path, now, financials)
+        else:
+            LOGGER.info("OpenDART 재무 캐시 재사용")
         financial_count = len(financials)
         for item in items:
             score_item(item, financials.get(item["ticker"]), market_uptrends.get(item["market"], False))
