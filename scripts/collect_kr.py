@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 from pykrx import stock
 
-from rs_engine import average, has_recent_pocket_pivot, market_cap_size, percentile_scores, weighted_return
+from rs_engine import average, market_cap_size, percentile_scores, range_signals, trend_template_score, weighted_return
 
 
 SEOUL = ZoneInfo("Asia/Seoul")
@@ -105,17 +105,18 @@ def ticker_names(date: str, tickers: list[str]) -> dict[str, str]:
     return {ticker: stock.get_market_ticker_name(ticker) or ticker for ticker in tickers}
 
 
-def price_columns(frame: pd.DataFrame) -> tuple[pd.Series, pd.Series, pd.Series]:
+def price_columns(frame: pd.DataFrame) -> tuple[pd.Series, pd.Series, pd.Series, pd.Series]:
     close = first_column(frame, "종가", "Close").astype(float)
     high = first_column(frame, "고가", "High").astype(float)
+    low = first_column(frame, "저가", "Low").astype(float)
     volume = first_column(frame, "거래량", "Volume").astype(float)
-    return close, high, volume
+    return close, high, low, volume
 
 
 def build_metrics(ticker: str, frame: pd.DataFrame, market: str, benchmark: pd.Series) -> dict[str, Any] | None:
     if frame is None or len(frame) < 253:
         return None
-    close, high, volume = price_columns(frame)
+    close, high, low, volume = price_columns(frame)
     closes = close.tolist()
     raw = weighted_return(closes)
     raw_previous = weighted_return(closes[:-1])
@@ -163,6 +164,9 @@ def build_metrics(ticker: str, frame: pd.DataFrame, market: str, benchmark: pd.S
         "ma50": int(round(ma50)),
         "ma150": int(round(ma150)),
         "ma200": int(round(ma200)),
+        "_ma200Prior": ma200_prior,
+        "_low52": low52,
+        "_high52": high52,
         "rsRaw": raw,
         "rsRawPrevious": raw_previous,
         "rsLineValue": round(rs_line_value, 2),
@@ -170,7 +174,7 @@ def build_metrics(ticker: str, frame: pd.DataFrame, market: str, benchmark: pd.S
         "newHigh52": bool(current >= high52 * 0.97),
         "trendTemplate": trend_template,
         "vcp": vcp,
-        "pocketPivot": has_recent_pocket_pivot(closes, volume.tolist()),
+        "signals": range_signals(closes, high.tolist(), low.tolist(), volume.tolist()),
         "maAligned": ma_aligned,
     }
 
@@ -234,9 +238,17 @@ def main() -> None:
             "size": market_cap_size(market_cap),
             "rs": rs,
             "newEntry": rs >= 70 and previous_scores.get(ticker, 0) < 70,
+            "trendScore": trend_template_score(
+                item["close"], item["ma50"], item["ma150"], item["ma200"],
+                item["_ma200Prior"], item["_low52"], item["_high52"], rs,
+            ),
+            "pocketPivot": "pocketPivot" in item["signals"],
         })
         item.pop("rsRaw", None)
         item.pop("rsRawPrevious", None)
+        item.pop("_ma200Prior", None)
+        item.pop("_low52", None)
+        item.pop("_high52", None)
         items.append(item)
 
     items.sort(key=lambda row: (-row["rs"], -row["marketCap"], row["ticker"]))

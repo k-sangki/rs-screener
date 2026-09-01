@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="한국과 미국 주식의 상대강도(RS)를 검색하고 비교하는 스크리너">
+  <meta name="description" content="RS·SEPA·CANSLIM·매매 신호를 한 화면에서 조합하는 통합 주식 스크리너">
   <title>RS Screener</title>
   <link rel="stylesheet" href="./assets/style.css">
 </head>
@@ -22,9 +22,9 @@
 
   <main id="screener" class="page-shell">
     <section class="hero">
-      <p class="eyebrow">RS SCREENER · <span id="regionEyebrow">KR</span></p>
-      <h1 id="pageTitle">KRX 상대강도 스크리너</h1>
-      <p id="pageDescription">RS 점수로 KOSPI·KOSDAQ의 상대적으로 강한 종목을 탐색합니다.</p>
+      <p class="eyebrow">UNIFIED STOCK SCREENER · <span id="regionEyebrow">KR</span></p>
+      <h1 id="pageTitle">KRX 통합 주식 스크리너</h1>
+      <p id="pageDescription">RS·SEPA·CANSLIM·기술 신호를 한 화면에서 조합해 종목을 탐색합니다.</p>
       <div class="region-tabs" role="tablist" aria-label="시장 선택">
         <button class="region-tab active" data-region="kr" type="button" role="tab" aria-selected="true">KR</button>
         <button class="region-tab" data-region="us" type="button" role="tab" aria-selected="false">US</button>
@@ -42,30 +42,54 @@
     </section>
 
     <section id="filterPanel" class="filter-panel" hidden>
-      <fieldset>
-        <legend>점수</legend>
-        <label for="minRs">RS ≥</label>
-        <select id="minRs">
-          <option value="70">70</option>
-          <option value="80">80</option>
-          <option value="90">90</option>
-        </select>
+      <fieldset class="filter-group">
+        <legend>RS · 가격 구조</legend>
+        <div class="select-grid">
+          <label>RS 최소<select id="minRs"><option value="0">전체</option><option value="70" selected>70</option><option value="80">80</option><option value="90">90</option></select></label>
+          <label>Trend 점수<select id="minTrend"><option value="0">전체</option><option value="6">6/8+</option><option value="7">7/8+</option><option value="8">8/8</option></select></label>
+        </div>
+        <div class="check-list">
+          <label><input type="checkbox" data-filter="trendTemplate"> Trend Template</label>
+          <label><input type="checkbox" data-filter="vcp"> VCP 후보</label>
+          <label><input type="checkbox" data-filter="maAligned"> 이평 정배열</label>
+          <label><input type="checkbox" data-filter="newHigh52"> 52주 신고가</label>
+          <label><input type="checkbox" data-filter="rsLineNew"> RS Line NEW</label>
+          <label><input type="checkbox" data-filter="midCapPlus"> 중형 이상</label>
+        </div>
       </fieldset>
-      <fieldset class="check-grid">
-        <legend>가격 구조</legend>
-        <label><input type="checkbox" data-filter="trendTemplate"> Minervini Trend Template</label>
-        <label><input type="checkbox" data-filter="vcp"> VCP 후보</label>
-        <label><input type="checkbox" data-filter="pocketPivot"> 포켓 피봇 7일 이내</label>
-        <label><input type="checkbox" data-filter="maAligned"> 이평 정배열</label>
-        <label><input type="checkbox" data-filter="newHigh52"> 52주 신고가</label>
-        <label><input type="checkbox" data-filter="newEntry"> 신규 진입</label>
-        <label><input type="checkbox" data-filter="midCapPlus"> 중형 이상만</label>
+
+      <fieldset class="filter-group">
+        <legend>SEPA · 성장성</legend>
+        <div class="select-grid">
+          <label>SEPA 등급<select id="sepaGrade"><option value="ALL">전체</option><option value="S">S만</option><option value="A">S+A</option><option value="B">S+A+B</option></select></label>
+          <label>분기 EPS<select id="minQuarterEps"><option value="">전체</option><option value="25">+25% 이상</option><option value="50">+50% 이상</option><option value="100">+100% 이상</option></select></label>
+          <label>분기 매출<select id="minQuarterSales"><option value="">전체</option><option value="10">+10% 이상</option><option value="25">+25% 이상</option></select></label>
+          <label>연간 EPS<select id="minAnnualEps"><option value="">전체</option><option value="25">+25% 이상</option><option value="50">+50% 이상</option></select></label>
+        </div>
+        <div class="check-list">
+          <label><input type="checkbox" data-filter="boxBreakout"> 박스 돌파</label>
+          <label><input type="checkbox" data-filter="epsExplosion"> EPS 폭발 +100%</label>
+        </div>
+      </fieldset>
+
+      <fieldset class="filter-group">
+        <legend>CANSLIM</legend>
+        <div class="select-grid">
+          <label>종합 점수<select id="minCanSlim"><option value="0">전체</option><option value="5">5+</option><option value="6">6+</option><option value="7">7+</option><option value="8">8+</option></select></label>
+          <label>ROE<select id="minRoe"><option value="">전체</option><option value="10">10%+</option><option value="17">17%+</option><option value="20">20%+</option></select></label>
+        </div>
+      </fieldset>
+
+      <fieldset class="filter-group signal-filter-group">
+        <legend>SIGNALS <span>선택한 신호 중 하나 이상</span></legend>
+        <div id="signalFilters" class="signal-filter-list"></div>
       </fieldset>
     </section>
 
     <section class="summary-row" aria-live="polite">
       <div><strong id="filteredCount">0</strong><span>필터됨</span></div>
       <div><strong id="rs90Count">0</strong><span>RS 90+</span></div>
+      <div><strong id="qualityCount">0</strong><span>Trend 8 · CANSLIM 7+</span></div>
     </section>
 
     <div id="statusMessage" class="status-message" hidden></div>
@@ -79,11 +103,13 @@
               <th class="sortable text-right" data-sort="close">종가 <span></span></th>
               <th class="sortable text-right" data-sort="marketCap">시총 <span></span></th>
               <th class="sortable text-center active" data-sort="rs">RS <span>▼</span></th>
-              <th class="sortable text-center" data-sort="rsLineValue">RS Line <span></span></th>
-              <th class="text-center">신고가</th>
-              <th class="sortable text-right" data-sort="ma50">MA50 <span></span></th>
-              <th class="sortable text-right" data-sort="ma150">MA150 <span></span></th>
-              <th class="sortable text-right" data-sort="ma200">MA200 <span></span></th>
+              <th class="sortable text-center" data-sort="trendScore">SEPA Trend <span></span></th>
+              <th class="sortable text-center" data-sort="sepaGrade">등급 <span></span></th>
+              <th class="sortable text-right" data-sort="quarterEpsGrowth">분기 EPS <span></span></th>
+              <th class="sortable text-right" data-sort="quarterSalesGrowth">분기 매출 <span></span></th>
+              <th class="sortable text-center" data-sort="canSlimScore">CANSLIM <span></span></th>
+              <th class="text-left">SIGNALS</th>
+              <th class="text-center">상세</th>
             </tr>
           </thead>
           <tbody id="stockRows"></tbody>
@@ -99,15 +125,15 @@
     </section>
 
     <section class="guide-card">
-      <h2>RS 점수 기준</h2>
-      <p>최근 약 12개월의 가격 수익률을 가중 계산한 뒤 같은 시장의 유효 종목과 비교한 백분위입니다.</p>
+      <h2>하나의 스크리너, 네 가지 관점</h2>
+      <p>RS 상대강도, SEPA 추세·성장성, CANSLIM 7요소, 기술적 매매 신호를 같은 종목 데이터에 결합합니다. ETF는 수집 대상에서 제외합니다.</p>
       <div class="formula-grid">
         <div><strong>63일</strong><span>40%</span></div>
         <div><strong>126일</strong><span>20%</span></div>
         <div><strong>189일</strong><span>20%</span></div>
         <div><strong>252일</strong><span>20%</span></div>
       </div>
-      <p class="disclaimer">RS는 과거 가격의 상대 순위이며 매수 신호나 미래 수익을 보장하지 않습니다.</p>
+      <p class="disclaimer">모든 점수와 신호는 과거 데이터에 기반한 참고 지표이며 매수·매도 추천이나 미래 수익을 보장하지 않습니다.</p>
     </section>
   </main>
 

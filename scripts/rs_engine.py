@@ -71,3 +71,62 @@ def has_recent_pocket_pivot(closes: Sequence[float], volumes: Sequence[float], d
         if prior_down_volumes and volumes[index] > max(prior_down_volumes):
             return True
     return False
+
+
+def trend_template_score(
+    current: float,
+    ma50: float,
+    ma150: float,
+    ma200: float,
+    ma200_prior: float,
+    low52: float,
+    high52: float,
+    rs: int,
+) -> int:
+    """Return an auditable 0–8 Minervini-style trend score."""
+    checks = (
+        current > ma150,
+        current > ma200,
+        ma150 > ma200,
+        ma200 > ma200_prior,
+        ma50 > ma150 and ma50 > ma200,
+        current > ma50,
+        current >= low52 * 1.30 and current >= high52 * 0.75,
+        rs >= 70,
+    )
+    return sum(checks)
+
+
+def range_signals(
+    closes: Sequence[float],
+    highs: Sequence[float],
+    lows: Sequence[float],
+    volumes: Sequence[float],
+) -> list[str]:
+    """Detect price/volume signals that can be calculated from daily OHLCV alone."""
+    if len(closes) < 53 or not (len(closes) == len(highs) == len(lows) == len(volumes)):
+        return []
+    signals: list[str] = []
+    current = float(closes[-1])
+    if has_recent_pocket_pivot(closes, volumes):
+        signals.append("pocketPivot")
+    if current >= max(highs[-252:-1] or highs[:-1]):
+        signals.append("high52Breakout")
+    if current >= max(highs[-51:-1]):
+        signals.append("high50Breakout")
+    if current >= max(highs[-21:-1]):
+        signals.append("high20Breakout")
+    avg50_volume = average(volumes[:-1], 50)
+    if avg50_volume and volumes[-1] <= avg50_volume * 0.50:
+        signals.append("dryUp")
+    ranges = [float(high) - float(low) for high, low in zip(highs, lows)]
+    inside_day = highs[-1] < highs[-2] and lows[-1] > lows[-2]
+    nr4 = ranges[-1] <= min(ranges[-4:])
+    nr7 = ranges[-1] <= min(ranges[-7:])
+    if nr7:
+        signals.append("nr7")
+    if inside_day and nr4:
+        signals.append("idNr4")
+    if inside_day and nr7:
+        signals.append("idNr7")
+    return signals

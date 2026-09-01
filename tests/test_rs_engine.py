@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from rs_engine import has_recent_pocket_pivot, market_cap_size, percentile_scores, weighted_return
+from rs_engine import has_recent_pocket_pivot, market_cap_size, percentile_scores, range_signals, trend_template_score, weighted_return
 
 
 class WeightedReturnTests(unittest.TestCase):
@@ -39,6 +39,19 @@ class SignalTests(unittest.TestCase):
         self.assertEqual(market_cap_size(300_000_000_000), "중형")
         self.assertEqual(market_cap_size(1_000_000_000_000), "중대형")
         self.assertEqual(market_cap_size(10_000_000_000_000), "대형")
+
+    def test_perfect_trend_template_scores_eight(self):
+        self.assertEqual(trend_template_score(150, 140, 130, 120, 115, 100, 155, 80), 8)
+
+    def test_range_signals_detect_nr7_and_dry_up(self):
+        closes = list(range(100, 153))
+        highs = [value + 2 for value in closes]
+        lows = [value - 2 for value in closes]
+        highs[-1], lows[-1] = closes[-1] + 0.5, closes[-1] - 0.5
+        volumes = [1000] * 52 + [400]
+        result = range_signals(closes, highs, lows, volumes)
+        self.assertIn("nr7", result)
+        self.assertIn("dryUp", result)
 
 
 if __name__ == "__main__":
