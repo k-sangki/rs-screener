@@ -11,7 +11,7 @@ const state = {
   region: "kr", data: [], meta: {}, query: "", minRs: 70, minTrend: 0, sepaGrade: "ALL", minQuarterEps: null, minQuarterSales: null,
   minAnnualEps: null, minCanSlim: 0, minRoe: null, filters: Object.fromEntries(FILTER_KEYS.map((key) => [key, false])), signals: new Set(),
   sortKey: "rs", sortDirection: "desc", page: 1, watchOnly: false, watchlist: new Set(JSON.parse(localStorage.getItem("rs-watchlist") || "[]")),
-  compare: new Set(), expanded: new Set()
+  compare: new Set(), expanded: new Set(), availableFields: new Set(), availableSignals: new Set()
 };
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -21,7 +21,6 @@ const numberOrNull = (value) => finite(value) ? Number(value) : null;
 function normalizeItem(raw) {
   const inferredSignals = [];
   if (raw.pocketPivot) inferredSignals.push("pocketPivot");
-  if (raw.newHigh52) inferredSignals.push("high52Breakout");
   const trendScore = numberOrNull(raw.trendScore) ?? [raw.trendTemplate, raw.maAligned, raw.newHigh52, raw.rs >= 70].filter(Boolean).length * 2;
   return {
     ...raw, trendScore: Math.min(8, trendScore), sepaGrade: raw.sepaGrade || "-", quarterEpsGrowth: numberOrNull(raw.quarterEpsGrowth),
@@ -35,13 +34,56 @@ function formatPercent(value) { return finite(value) ? `${Number(value) > 0 ? "+
 function formatMarketCap(value) { if (!finite(value)) return "-"; return value >= 1e12 ? `${(value / 1e12).toFixed(1)}조` : `${Math.round(value / 1e8).toLocaleString("ko-KR")}억`; }
 function changeClass(value) { return value > 0 ? "positive" : value < 0 ? "negative" : ""; }
 function marketLink(item) { return state.region === "kr" ? `https://stock.naver.com/domestic/stock/${item.ticker}/price` : `https://finance.yahoo.com/quote/${encodeURIComponent(item.ticker)}`; }
-function renderSignalFilters() { $("#signalFilters").innerHTML = Object.entries(SIGNAL_LABELS).map(([key, label]) => `<label><input type="checkbox" data-signal="${key}"> ${label}</label>`).join(""); }
+function renderSignalFilters() {
+  $("#signalFilters").innerHTML = Object.entries(SIGNAL_LABELS).map(([key, label]) => {
+    const available = state.availableSignals.has(key);
+    return `<label class="${available ? "" : "unavailable-control"}" title="${available ? "" : "계산식 연결 전"}"><input type="checkbox" data-signal="${key}" ${available ? "" : "disabled"}> ${label}${available ? "" : " · 준비중"}</label>`;
+  }).join("");
+}
+
+function setControlAvailability(selector, available) {
+  const control = $(selector);
+  if (!control) return;
+  control.disabled = !available;
+  control.closest("label")?.classList.toggle("unavailable-control", !available);
+  control.closest("label")?.setAttribute("title", available ? "" : "재무 데이터 연결 전");
+}
+
+function updateAvailability(rawItems) {
+  state.availableFields = new Set(rawItems.flatMap((item) => Object.keys(item)));
+  state.availableSignals = new Set(rawItems.flatMap((item) => item.signals || []));
+  if (rawItems.some((item) => item.pocketPivot)) state.availableSignals.add("pocketPivot");
+
+  const controls = {
+    "#sepaGrade": "sepaGrade", "#minQuarterEps": "quarterEpsGrowth", "#minQuarterSales": "quarterSalesGrowth",
+    "#minAnnualEps": "annualEpsGrowth", "#minCanSlim": "canSlimScore", "#minRoe": "roe"
+  };
+  Object.entries(controls).forEach(([selector, field]) => setControlAvailability(selector, state.availableFields.has(field)));
+  [["boxBreakout", "boxBreakout"], ["epsExplosion", "epsExplosion"]].forEach(([filter, field]) => {
+    const input = $(`[data-filter="${filter}"]`), available = state.availableFields.has(field);
+    input.disabled = !available; input.closest("label")?.classList.toggle("unavailable-control", !available);
+    input.closest("label")?.setAttribute("title", available ? "" : "데이터 연결 전");
+  });
+
+  const sepaReady = ["sepaGrade", "quarterEpsGrowth", "quarterSalesGrowth", "annualEpsGrowth"].some((field) => state.availableFields.has(field));
+  const canSlimReady = state.availableFields.has("canSlimScore");
+  $("#sepaAvailability").textContent = sepaReady ? "" : "· DART 연결 전";
+  $("#canSlimAvailability").textContent = canSlimReady ? "" : "· DART 연결 전";
+  $("#signalAvailability").textContent = `${state.availableSignals.size}/${Object.keys(SIGNAL_LABELS).length}개 계산 중 · 선택 신호 중 하나 이상`;
+  $("#qualityLabel").textContent = canSlimReady ? "Trend 8 · CANSLIM 7+" : "Trend 8";
+  state.signals = new Set([...state.signals].filter((signal) => state.availableSignals.has(signal)));
+  renderSignalFilters();
+
+  const unavailableSorts = { sepaGrade: "sepaGrade", quarterEpsGrowth: "quarterEpsGrowth", quarterSalesGrowth: "quarterSalesGrowth", canSlimScore: "canSlimScore" };
+  Object.entries(unavailableSorts).forEach(([sort, field]) => $("th[data-sort=\"" + sort + "\"]")?.classList.toggle("unavailable-column", !state.availableFields.has(field)));
+}
 
 async function loadRegion(region) {
   state.region = region; state.page = 1; state.compare.clear(); state.expanded.clear(); setStatus("데이터를 불러오는 중입니다…");
   try {
     const response = await fetch(`./data/${region}.json`, { cache: "no-store" }); if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const payload = await response.json(); state.meta = payload; state.data = (Array.isArray(payload.items) ? payload.items : []).map(normalizeItem);
+    const payload = await response.json(); const rawItems = Array.isArray(payload.items) ? payload.items : [];
+    state.meta = payload; updateAvailability(rawItems); state.data = rawItems.map(normalizeItem);
     setStatus(payload.message || "", Boolean(payload.message)); updateRegionCopy(); render();
   } catch (error) { state.data = []; setStatus(`데이터를 불러오지 못했습니다: ${error.message}`, true); render(); }
 }
@@ -87,7 +129,8 @@ function renderHeaders() { $$("th[data-sort]").forEach((header) => { const activ
 function renderCompare() { const selected = state.data.filter((item) => state.compare.has(item.ticker)); $("#compareBar").hidden = !selected.length; $("#compareNames").textContent = selected.map((item) => item.name).join(" · "); }
 function render() {
   const list = visibleItems(), totalPages = Math.max(1, Math.ceil(list.length / PAGE_SIZE)); state.page = Math.min(state.page, totalPages); renderRows(list.slice((state.page - 1) * PAGE_SIZE, state.page * PAGE_SIZE)); renderHeaders(); renderCompare();
-  $("#filteredCount").textContent = list.length.toLocaleString(); $("#rs90Count").textContent = list.filter((item) => item.rs >= 90).length.toLocaleString(); $("#qualityCount").textContent = list.filter((item) => item.trendScore === 8 && item.canSlimScore >= 7).length.toLocaleString(); $("#watchCount").textContent = state.watchlist.size;
+  const canSlimReady = state.availableFields.has("canSlimScore");
+  $("#filteredCount").textContent = list.length.toLocaleString(); $("#rs90Count").textContent = list.filter((item) => item.rs >= 90).length.toLocaleString(); $("#qualityCount").textContent = list.filter((item) => item.trendScore === 8 && (!canSlimReady || item.canSlimScore >= 7)).length.toLocaleString(); $("#watchCount").textContent = state.watchlist.size;
   $("#pageIndicator").textContent = `${state.page} / ${totalPages}`; $("#firstPage").disabled = $("#prevPage").disabled = state.page === 1; $("#nextPage").disabled = $("#lastPage").disabled = state.page === totalPages;
 }
 function bindSelect(id, stateKey, numeric = true) { $(id).addEventListener("change", (event) => { state[stateKey] = event.target.value === "" ? null : numeric ? Number(event.target.value) : event.target.value; state.page = 1; render(); }); }
@@ -97,7 +140,7 @@ $("#filterToggle").addEventListener("click", () => { const panel = $("#filterPan
 $$("[data-filter]").forEach((input) => input.addEventListener("change", () => { state.filters[input.dataset.filter] = input.checked; state.page = 1; render(); }));
 $("#signalFilters").addEventListener("change", (event) => { const signal = event.target.dataset.signal; if (!signal) return; event.target.checked ? state.signals.add(signal) : state.signals.delete(signal); state.page = 1; render(); });
 $$(".region-tab").forEach((button) => button.addEventListener("click", () => loadRegion(button.dataset.region)));
-$$("th[data-sort]").forEach((header) => header.addEventListener("click", () => { const key = header.dataset.sort; state.sortDirection = state.sortKey === key && state.sortDirection === "desc" ? "asc" : "desc"; state.sortKey = key; state.page = 1; render(); }));
+$$("th[data-sort]").forEach((header) => header.addEventListener("click", () => { if (header.classList.contains("unavailable-column")) return; const key = header.dataset.sort; state.sortDirection = state.sortKey === key && state.sortDirection === "desc" ? "asc" : "desc"; state.sortKey = key; state.page = 1; render(); }));
 $("#stockRows").addEventListener("click", (event) => {
   const watch = event.target.closest("[data-watch]"); if (watch) { const key = `${state.region}:${watch.dataset.watch}`; state.watchlist.has(key) ? state.watchlist.delete(key) : state.watchlist.add(key); localStorage.setItem("rs-watchlist", JSON.stringify([...state.watchlist])); render(); return; }
   const compare = event.target.closest("[data-compare]"); if (compare) { const ticker = compare.dataset.compare; if (state.compare.has(ticker)) state.compare.delete(ticker); else if (state.compare.size < 4) state.compare.add(ticker); render(); return; }

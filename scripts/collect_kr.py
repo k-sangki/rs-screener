@@ -228,8 +228,6 @@ def main() -> None:
     items = []
     for ticker, item in metrics.items():
         rs = current_scores[ticker]
-        if rs < 70:
-            continue
         market_cap = int(cap_snapshot.get(ticker, 0))
         item.update({
             "name": names.get(ticker, ticker),
@@ -259,6 +257,7 @@ def main() -> None:
         "updatedAt": f"{datetime.strptime(date, '%Y%m%d').strftime('%Y-%m-%d')} {now.strftime('%H:%M')} KST",
         "source": "KRX·Naver adjusted OHLCV via pykrx",
         "universeCount": len(metrics),
+        "publishedCount": len(items),
         "items": items,
     }
     output.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
