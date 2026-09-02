@@ -9,7 +9,8 @@ const SIGNAL_LABELS = {
 
 const state = {
   region: "kr", data: [], meta: {}, query: "", minRs: 70, minTrend: 0, sepaGrade: "ALL", minQuarterEps: null, minQuarterSales: null,
-  minAnnualEps: null, minCanSlim: 0, minRoe: null, filters: Object.fromEntries(FILTER_KEYS.map((key) => [key, false])), signals: new Set(),
+  minOperatingCashFlow: null, minInterestCoverage: null, minAnnualEps: null, minCanSlim: 0, minRoe: null,
+  filters: Object.fromEntries(FILTER_KEYS.map((key) => [key, false])), signals: new Set(),
   sortKey: "rs", sortDirection: "desc", page: 1, watchOnly: false, watchlist: new Set(JSON.parse(localStorage.getItem("rs-watchlist") || "[]")),
   compare: new Set(), expanded: new Set(), availableFields: new Set(), availableSignals: new Set()
 };
@@ -59,6 +60,7 @@ function updateAvailability(rawItems) {
 
   const controls = {
     "#sepaGrade": "sepaGrade", "#minQuarterEps": "dilutedEpsGrowthYoY", "#minQuarterSales": "revenueGrowthYoY",
+    "#minOperatingCashFlow": "operatingCashFlowTtm", "#minInterestCoverage": "ebitdaCapexInterestCoverageTtm",
     "#minAnnualEps": "annualEpsGrowth", "#minCanSlim": "canSlimScore", "#minRoe": "roe"
   };
   Object.entries(controls).forEach(([selector, field]) => setControlAvailability(selector, state.availableFields.has(field)));
@@ -106,6 +108,8 @@ function visibleItems() {
     if (item.rs < state.minRs || item.trendScore < state.minTrend || !gradePass(item.sepaGrade)) return false;
     if (state.minQuarterEps !== null && (item.dilutedEpsGrowthYoY === null || item.dilutedEpsGrowthYoY < state.minQuarterEps)) return false;
     if (state.minQuarterSales !== null && (item.revenueGrowthYoY === null || item.revenueGrowthYoY < state.minQuarterSales)) return false;
+    if (state.minOperatingCashFlow !== null && (item.operatingCashFlowTtm === null || item.operatingCashFlowTtm <= state.minOperatingCashFlow)) return false;
+    if (state.minInterestCoverage !== null && (item.ebitdaCapexInterestCoverageTtm === null || item.ebitdaCapexInterestCoverageTtm <= state.minInterestCoverage)) return false;
     if (state.minAnnualEps !== null && (item.annualEpsGrowth === null || item.annualEpsGrowth < state.minAnnualEps)) return false;
     if (state.minCanSlim && (item.canSlimScore === null || item.canSlimScore < state.minCanSlim)) return false;
     if (state.minRoe !== null && (item.roe === null || item.roe < state.minRoe)) return false;
@@ -140,7 +144,7 @@ function render() {
 }
 function bindSelect(id, stateKey, numeric = true) { $(id).addEventListener("change", (event) => { state[stateKey] = event.target.value === "" ? null : numeric ? Number(event.target.value) : event.target.value; state.page = 1; render(); }); }
 $("#searchInput").addEventListener("input", (event) => { state.query = event.target.value; state.page = 1; render(); });
-bindSelect("#minRs", "minRs"); bindSelect("#minTrend", "minTrend"); bindSelect("#sepaGrade", "sepaGrade", false); bindSelect("#minQuarterEps", "minQuarterEps"); bindSelect("#minQuarterSales", "minQuarterSales"); bindSelect("#minAnnualEps", "minAnnualEps"); bindSelect("#minCanSlim", "minCanSlim"); bindSelect("#minRoe", "minRoe");
+bindSelect("#minRs", "minRs"); bindSelect("#minTrend", "minTrend"); bindSelect("#sepaGrade", "sepaGrade", false); bindSelect("#minQuarterEps", "minQuarterEps"); bindSelect("#minQuarterSales", "minQuarterSales"); bindSelect("#minOperatingCashFlow", "minOperatingCashFlow"); bindSelect("#minInterestCoverage", "minInterestCoverage"); bindSelect("#minAnnualEps", "minAnnualEps"); bindSelect("#minCanSlim", "minCanSlim"); bindSelect("#minRoe", "minRoe");
 $("#filterToggle").addEventListener("click", () => { const panel = $("#filterPanel"); panel.hidden = !panel.hidden; $("#filterToggle").setAttribute("aria-expanded", String(!panel.hidden)); $("#filterToggle span").textContent = panel.hidden ? "▼" : "▲"; });
 $$("[data-filter]").forEach((input) => input.addEventListener("change", () => { state.filters[input.dataset.filter] = input.checked; state.page = 1; render(); }));
 $("#signalFilters").addEventListener("change", (event) => { const signal = event.target.dataset.signal; if (!signal) return; event.target.checked ? state.signals.add(signal) : state.signals.delete(signal); state.page = 1; render(); });
@@ -154,8 +158,8 @@ $("#stockRows").addEventListener("click", (event) => {
 $("#watchlistToggle").addEventListener("click", () => { state.watchOnly = !state.watchOnly; $("#watchlistToggle").classList.toggle("active", state.watchOnly); state.page = 1; render(); }); $("#clearCompare").addEventListener("click", () => { state.compare.clear(); render(); });
 $("#firstPage").addEventListener("click", () => { state.page = 1; render(); }); $("#prevPage").addEventListener("click", () => { state.page -= 1; render(); }); $("#nextPage").addEventListener("click", () => { state.page += 1; render(); }); $("#lastPage").addEventListener("click", () => { state.page = Math.max(1, Math.ceil(visibleItems().length / PAGE_SIZE)); render(); });
 $("#resetButton").addEventListener("click", () => {
-  Object.assign(state, { query: "", minRs: 70, minTrend: 0, sepaGrade: "ALL", minQuarterEps: null, minQuarterSales: null, minAnnualEps: null, minCanSlim: 0, minRoe: null, filters: Object.fromEntries(FILTER_KEYS.map((key) => [key, false])), signals: new Set(), watchOnly: false, page: 1 });
-  $("#searchInput").value = ""; [["#minRs", "70"], ["#minTrend", "0"], ["#sepaGrade", "ALL"], ["#minQuarterEps", ""], ["#minQuarterSales", ""], ["#minAnnualEps", ""], ["#minCanSlim", "0"], ["#minRoe", ""]].forEach(([id, value]) => { $(id).value = value; }); $$("input[type=checkbox]").forEach((input) => { input.checked = false; }); render();
+  Object.assign(state, { query: "", minRs: 70, minTrend: 0, sepaGrade: "ALL", minQuarterEps: null, minQuarterSales: null, minOperatingCashFlow: null, minInterestCoverage: null, minAnnualEps: null, minCanSlim: 0, minRoe: null, filters: Object.fromEntries(FILTER_KEYS.map((key) => [key, false])), signals: new Set(), watchOnly: false, page: 1 });
+  $("#searchInput").value = ""; [["#minRs", "70"], ["#minTrend", "0"], ["#sepaGrade", "ALL"], ["#minQuarterEps", ""], ["#minQuarterSales", ""], ["#minOperatingCashFlow", ""], ["#minInterestCoverage", ""], ["#minAnnualEps", ""], ["#minCanSlim", "0"], ["#minRoe", ""]].forEach(([id, value]) => { $(id).value = value; }); $$("input[type=checkbox]").forEach((input) => { input.checked = false; }); render();
 });
 const savedTheme = localStorage.getItem("rs-theme"); if (savedTheme === "dark" || (!savedTheme && matchMedia("(prefers-color-scheme: dark)").matches)) document.documentElement.dataset.theme = "dark";
 $("#themeToggle").addEventListener("click", () => { const dark = document.documentElement.dataset.theme !== "dark"; document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("rs-theme", dark ? "dark" : "light"); });
