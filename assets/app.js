@@ -74,7 +74,7 @@ function updateAvailability(rawItems) {
   const financialStatus = financialCount ? `· DART ${financialCount.toLocaleString("ko-KR")}개 반영` : "· DART 연결 전";
   $("#sepaAvailability").textContent = sepaReady ? financialStatus : "· DART 연결 전";
   $("#canSlimAvailability").textContent = canSlimReady ? financialStatus : "· DART 연결 전";
-  $("#signalAvailability").textContent = `${state.availableSignals.size}/${Object.keys(SIGNAL_LABELS).length}개 계산 중 · 선택 신호 중 하나 이상`;
+  $("#signalAvailability").textContent = `${state.availableSignals.size}/${Object.keys(SIGNAL_LABELS).length}개 계산 중 · 선택 신호 모두 충족`;
   $("#qualityLabel").textContent = canSlimReady ? "Trend 8 · CANSLIM 7+" : "Trend 8";
   state.signals = new Set([...state.signals].filter((signal) => state.availableSignals.has(signal)));
   renderSignalFilters();
@@ -113,7 +113,7 @@ function visibleItems() {
     if (query && ![item.name, item.ticker, item.market, item.theme].filter(Boolean).some((value) => String(value).toLowerCase().includes(query))) return false;
     if (state.filters.midCapPlus && item.marketCap < 300_000_000_000) return false;
     if (!FILTER_KEYS.filter((key) => key !== "midCapPlus").every((key) => !state.filters[key] || Boolean(item[key]))) return false;
-    return !state.signals.size || [...state.signals].some((signal) => item.signals.includes(signal));
+    return !state.signals.size || [...state.signals].every((signal) => item.signals.includes(signal));
   });
   return list.sort((a, b) => { const av = a[state.sortKey] ?? -Infinity, bv = b[state.sortKey] ?? -Infinity; const compared = typeof av === "string" ? av.localeCompare(String(bv), state.region === "kr" ? "ko" : "en") : Number(av) - Number(bv); return compared ? (state.sortDirection === "asc" ? compared : -compared) : b.rs - a.rs || String(a.ticker).localeCompare(String(b.ticker)); });
 }

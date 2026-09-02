@@ -300,7 +300,13 @@ def main() -> None:
             financials = collect_financials(dart_key, items, now)
             save_cached_financials(dart_cache_path, now, financials)
         else:
-            LOGGER.info("OpenDART 재무 캐시 재사용")
+            missing_items = [item for item in items if item["ticker"] not in financials]
+            if missing_items:
+                LOGGER.info("OpenDART 재무 캐시 누락 %s개 종목 재시도", len(missing_items))
+                financials.update(collect_financials(dart_key, missing_items, now))
+                save_cached_financials(dart_cache_path, now, financials)
+            else:
+                LOGGER.info("OpenDART 재무 캐시 재사용")
         financial_count = len(financials)
         for item in items:
             score_item(item, financials.get(item["ticker"]), market_uptrends.get(item["market"], False))

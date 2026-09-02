@@ -6,7 +6,6 @@ import io
 import json
 import logging
 import re
-import threading
 import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -23,7 +22,6 @@ REPORT_Q3 = "11014"
 REPORT_ANNUAL = "11011"
 CACHE_SCHEMA_VERSION = 3
 LOGGER = logging.getLogger("dart_engine")
-_THREAD_LOCAL = threading.local()
 
 
 def parse_amount(value: Any) -> float | None:
@@ -118,15 +116,12 @@ def normalize_company_name(name: str) -> str:
 def request_statement(api_key: str, corp_code: str, year: int, report_code: str, timeout: int = 30) -> list[dict[str, Any]]:
     import requests
 
-    if not hasattr(_THREAD_LOCAL, "session"):
-        _THREAD_LOCAL.session = requests.Session()
-    session = _THREAD_LOCAL.session
     params = {"crtfc_key": api_key, "corp_code": corp_code, "bsns_year": str(year), "reprt_code": report_code}
     for fs_div in ("CFS", "OFS"):
         params["fs_div"] = fs_div
         for attempt in range(2):
             try:
-                response = session.get(f"{DART_BASE}/fnlttSinglAcntAll.json", params=params, timeout=timeout)
+                response = requests.get(f"{DART_BASE}/fnlttSinglAcntAll.json", params=params, timeout=timeout)
                 response.raise_for_status()
                 payload = response.json()
                 status = payload.get("status")
@@ -320,7 +315,7 @@ def calculate_financial_metrics(
     return {key: value for key, value in result.items() if value is not None}
 
 
-def collect_financials(api_key: str, items: list[dict[str, Any]], now: datetime, workers: int = 6) -> dict[str, dict[str, Any]]:
+def collect_financials(api_key: str, items: list[dict[str, Any]], now: datetime, workers: int = 4) -> dict[str, dict[str, Any]]:
     stock_map, name_map = download_corp_codes(api_key)
     ticker_to_corp = {
         item["ticker"]: stock_map.get(item["ticker"]) or name_map.get(normalize_company_name(item.get("name", "")))
