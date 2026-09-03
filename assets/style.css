@@ -78,6 +78,9 @@ h1 { margin: 0; font-size: clamp(28px, 4vw, 42px); line-height: 1.18; letter-spa
 .search-wrap input::placeholder { color: var(--muted); }
 .secondary-button { height: 44px; padding: 0 16px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); font-weight: 700; }
 .text-button { border: 0; background: transparent; color: var(--muted); font-size: 13px; }
+.text-button:hover:not(:disabled) { color: var(--text); }
+.text-button:disabled { cursor: default; opacity: .42; }
+.primary-button { height: 44px; padding: 0 16px; border: 1px solid var(--accent); border-radius: 11px; background: var(--accent); color: #fff; font-weight: 750; }
 
 .filter-panel { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 12px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow); }
 .filter-group { padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--surface-2) 45%, var(--surface)); }
@@ -178,6 +181,14 @@ tbody tr:hover { background: color-mix(in srgb, var(--accent-soft) 45%, transpar
 .compare-bar div { display: flex; gap: 10px; align-items: center; min-width: 0; }
 .compare-bar span { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .compare-bar button { border: 0; background: transparent; color: var(--accent); font-weight: 700; }
+.confirm-dialog { width: min(420px, calc(100% - 32px)); padding: 0; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); color: var(--text); box-shadow: 0 24px 80px rgba(10, 20, 40, .28); }
+.confirm-dialog::backdrop { background: rgba(8, 12, 20, .52); backdrop-filter: blur(3px); }
+.confirm-dialog form { padding: 24px; }
+.confirm-dialog h2 { margin: 0; font-size: 19px; letter-spacing: -.02em; }
+.confirm-dialog p { margin: 10px 0 22px; color: var(--muted); font-size: 14px; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.dialog-actions button { height: 40px; }
+.preset-toast { position: fixed; left: 50%; bottom: 24px; z-index: 50; transform: translateX(-50%); padding: 11px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--text); color: var(--surface); box-shadow: 0 10px 34px rgba(10, 20, 40, .2); font-size: 13px; font-weight: 700; white-space: nowrap; }
 footer { display: flex; justify-content: space-between; gap: 24px; padding: 26px max(24px, calc((100vw - 1180px) / 2)); border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
 
 @media (max-width: 760px) {
@@ -186,6 +197,7 @@ footer { display: flex; justify-content: space-between; gap: 24px; padding: 26px
   .hero { padding-top: 42px; }
   .toolbar { flex-wrap: wrap; }
   .search-wrap { flex-basis: 100%; }
+  .toolbar .text-button { padding: 6px 4px; }
   .filter-panel { grid-template-columns: 1fr; }
   .signal-filter-group { grid-column: auto; }
   .detail-grid { grid-template-columns: 1fr 1fr; padding: 16px; }

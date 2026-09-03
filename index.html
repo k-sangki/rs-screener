@@ -39,6 +39,8 @@
       </div>
       <button id="filterToggle" class="secondary-button" type="button" aria-expanded="false">필터 <span>▼</span></button>
       <button id="resetButton" class="text-button" type="button">초기화</button>
+      <button id="loadPresetButton" class="text-button" type="button">프리셋 불러오기</button>
+      <button id="savePresetButton" class="text-button" type="button">프리셋 저장하기</button>
     </section>
 
     <section id="filterPanel" class="filter-panel" hidden>
@@ -145,6 +147,19 @@
     <div><strong>비교</strong><span id="compareNames"></span></div>
     <button id="clearCompare" type="button">비우기</button>
   </aside>
+
+  <dialog id="presetOverwriteDialog" class="confirm-dialog" aria-labelledby="presetDialogTitle">
+    <form method="dialog">
+      <h2 id="presetDialogTitle">프리셋을 덮어쓸까요?</h2>
+      <p>현재 저장된 프리셋은 삭제되고 지금 선택한 필터 상태로 교체됩니다.</p>
+      <div class="dialog-actions">
+        <button class="secondary-button" type="submit" value="cancel">취소</button>
+        <button id="confirmPresetOverwrite" class="primary-button" type="submit" value="confirm">덮어쓰기</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="presetToast" class="preset-toast" role="status" aria-live="polite" hidden></div>
 
   <footer>
     <strong>RS SCREENER</strong>

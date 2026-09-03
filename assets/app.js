@@ -1,5 +1,16 @@
 const PAGE_SIZE = 50;
+const PRESET_KEY = "rs-filter-preset";
 const FILTER_KEYS = ["trendTemplate", "vcp", "maAligned", "newHigh52", "rsLineNew", "midCapPlus", "boxBreakout", "epsExplosion"];
+const PRESET_VALUE_KEYS = [
+  "minRs", "minTrend", "sepaGrade", "minQuarterEps", "minQuarterSales", "minOperatingCashFlow",
+  "minInterestCoverage", "minAnnualEps", "minCanSlim", "minRoe"
+];
+const SELECT_STATE = [
+  ["#minRs", "minRs"], ["#minTrend", "minTrend"], ["#sepaGrade", "sepaGrade"],
+  ["#minQuarterEps", "minQuarterEps"], ["#minQuarterSales", "minQuarterSales"],
+  ["#minOperatingCashFlow", "minOperatingCashFlow"], ["#minInterestCoverage", "minInterestCoverage"],
+  ["#minAnnualEps", "minAnnualEps"], ["#minCanSlim", "minCanSlim"], ["#minRoe", "minRoe"]
+];
 const SIGNAL_LABELS = {
   pocketPivot: "포켓 피봇", high52Breakout: "52주 신고가 돌파", high50Breakout: "50일 신고가 돌파", high20Breakout: "20일 신고가 돌파", dryUp: "드라이업",
   turtleSoup: "터틀 수프", turtleSoupPlusOne: "터틀 수프 +1", turtleSoupShort: "터틀 수프 숏", turtleSoupShortPlusOne: "터틀 수프 숏 +1",
@@ -41,8 +52,84 @@ function marketLink(item) { return state.region === "kr" ? `https://stock.naver.
 function renderSignalFilters() {
   $("#signalFilters").innerHTML = Object.entries(SIGNAL_LABELS).map(([key, label]) => {
     const available = state.availableSignals.has(key);
-    return `<label class="${available ? "" : "unavailable-control"}" title="${available ? "" : "계산식 연결 전"}"><input type="checkbox" data-signal="${key}" ${available ? "" : "disabled"}> ${label}${available ? "" : " · 준비중"}</label>`;
+    return `<label class="${available ? "" : "unavailable-control"}" title="${available ? "" : "계산식 연결 전"}"><input type="checkbox" data-signal="${key}" ${state.signals.has(key) ? "checked" : ""} ${available ? "" : "disabled"}> ${label}${available ? "" : " · 준비중"}</label>`;
   }).join("");
+}
+
+let toastTimer;
+function showPresetToast(message) {
+  const toast = $("#presetToast");
+  clearTimeout(toastTimer);
+  toast.textContent = message;
+  toast.hidden = false;
+  toastTimer = setTimeout(() => { toast.hidden = true; }, 2400);
+}
+
+function readPreset() {
+  const raw = localStorage.getItem(PRESET_KEY);
+  if (!raw) return null;
+  try {
+    const preset = JSON.parse(raw);
+    return preset && preset.version === 1 && preset.values && preset.filters && Array.isArray(preset.signals) ? preset : null;
+  } catch {
+    return null;
+  }
+}
+
+function updatePresetControls() {
+  const preset = readPreset();
+  const loadButton = $("#loadPresetButton");
+  loadButton.disabled = !preset;
+  loadButton.title = preset?.savedAt ? `마지막 저장: ${new Date(preset.savedAt).toLocaleString("ko-KR")}` : "저장된 프리셋이 없습니다.";
+}
+
+function currentPreset() {
+  return {
+    version: 1,
+    savedAt: new Date().toISOString(),
+    values: Object.fromEntries(PRESET_VALUE_KEYS.map((key) => [key, state[key]])),
+    filters: Object.fromEntries(FILTER_KEYS.map((key) => [key, Boolean(state.filters[key])])),
+    signals: [...state.signals],
+    watchOnly: Boolean(state.watchOnly)
+  };
+}
+
+function persistPreset() {
+  try {
+    localStorage.setItem(PRESET_KEY, JSON.stringify(currentPreset()));
+    updatePresetControls();
+    showPresetToast("현재 필터를 프리셋으로 저장했습니다.");
+  } catch {
+    showPresetToast("프리셋을 저장하지 못했습니다.");
+  }
+}
+
+function syncFilterControls() {
+  SELECT_STATE.forEach(([selector, key]) => { $(selector).value = state[key] ?? ""; });
+  $$("[data-filter]").forEach((input) => { input.checked = Boolean(state.filters[input.dataset.filter]); });
+  $$("[data-signal]").forEach((input) => { input.checked = state.signals.has(input.dataset.signal); });
+  $("#watchlistToggle").classList.toggle("active", state.watchOnly);
+  $("#watchlistToggle").setAttribute("aria-pressed", String(state.watchOnly));
+}
+
+function applyPreset() {
+  const preset = readPreset();
+  if (!preset) {
+    localStorage.removeItem(PRESET_KEY);
+    updatePresetControls();
+    showPresetToast("불러올 프리셋이 없습니다.");
+    return;
+  }
+  PRESET_VALUE_KEYS.forEach((key) => {
+    if (Object.hasOwn(preset.values, key)) state[key] = preset.values[key];
+  });
+  state.filters = Object.fromEntries(FILTER_KEYS.map((key) => [key, Boolean(preset.filters[key])]));
+  state.signals = new Set(preset.signals.filter((signal) => state.availableSignals.has(signal)));
+  state.watchOnly = Boolean(preset.watchOnly);
+  state.page = 1;
+  syncFilterControls();
+  render();
+  showPresetToast("저장된 프리셋을 적용했습니다.");
 }
 
 function setControlAvailability(selector, available) {
@@ -155,12 +242,18 @@ $("#stockRows").addEventListener("click", (event) => {
   const compare = event.target.closest("[data-compare]"); if (compare) { const ticker = compare.dataset.compare; if (state.compare.has(ticker)) state.compare.delete(ticker); else if (state.compare.size < 4) state.compare.add(ticker); render(); return; }
   const detail = event.target.closest("[data-detail]"); if (detail) { state.expanded.has(detail.dataset.detail) ? state.expanded.delete(detail.dataset.detail) : state.expanded.add(detail.dataset.detail); render(); }
 });
-$("#watchlistToggle").addEventListener("click", () => { state.watchOnly = !state.watchOnly; $("#watchlistToggle").classList.toggle("active", state.watchOnly); state.page = 1; render(); }); $("#clearCompare").addEventListener("click", () => { state.compare.clear(); render(); });
+$("#watchlistToggle").addEventListener("click", () => { state.watchOnly = !state.watchOnly; $("#watchlistToggle").classList.toggle("active", state.watchOnly); $("#watchlistToggle").setAttribute("aria-pressed", String(state.watchOnly)); state.page = 1; render(); }); $("#clearCompare").addEventListener("click", () => { state.compare.clear(); render(); });
 $("#firstPage").addEventListener("click", () => { state.page = 1; render(); }); $("#prevPage").addEventListener("click", () => { state.page -= 1; render(); }); $("#nextPage").addEventListener("click", () => { state.page += 1; render(); }); $("#lastPage").addEventListener("click", () => { state.page = Math.max(1, Math.ceil(visibleItems().length / PAGE_SIZE)); render(); });
 $("#resetButton").addEventListener("click", () => {
   Object.assign(state, { query: "", minRs: 70, minTrend: 0, sepaGrade: "ALL", minQuarterEps: null, minQuarterSales: null, minOperatingCashFlow: null, minInterestCoverage: null, minAnnualEps: null, minCanSlim: 0, minRoe: null, filters: Object.fromEntries(FILTER_KEYS.map((key) => [key, false])), signals: new Set(), watchOnly: false, page: 1 });
-  $("#searchInput").value = ""; [["#minRs", "70"], ["#minTrend", "0"], ["#sepaGrade", "ALL"], ["#minQuarterEps", ""], ["#minQuarterSales", ""], ["#minOperatingCashFlow", ""], ["#minInterestCoverage", ""], ["#minAnnualEps", ""], ["#minCanSlim", "0"], ["#minRoe", ""]].forEach(([id, value]) => { $(id).value = value; }); $$("input[type=checkbox]").forEach((input) => { input.checked = false; }); render();
+  $("#searchInput").value = ""; syncFilterControls(); render();
 });
+$("#loadPresetButton").addEventListener("click", applyPreset);
+$("#savePresetButton").addEventListener("click", () => {
+  if (localStorage.getItem(PRESET_KEY)) $("#presetOverwriteDialog").showModal();
+  else persistPreset();
+});
+$("#confirmPresetOverwrite").addEventListener("click", persistPreset);
 const savedTheme = localStorage.getItem("rs-theme"); if (savedTheme === "dark" || (!savedTheme && matchMedia("(prefers-color-scheme: dark)").matches)) document.documentElement.dataset.theme = "dark";
 $("#themeToggle").addEventListener("click", () => { const dark = document.documentElement.dataset.theme !== "dark"; document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("rs-theme", dark ? "dark" : "light"); });
-renderSignalFilters(); loadRegion("kr");
+renderSignalFilters(); updatePresetControls(); loadRegion("kr");
