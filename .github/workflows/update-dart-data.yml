@@ -1,15 +1,10 @@
-name: Update KRX market data
+name: Update OpenDART financial data
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - ".github/data-refresh"
   schedule:
-    # 18:30 KST, Monday-Friday
-    - cron: "30 9 * * 1-5"
-    # 08:00 KST, Monday-Friday (23:00 UTC on the previous day)
-    - cron: "0 23 * * 0-4"
+    # 09:30 KST every Saturday
+    - cron: "30 0 * * 6"
 
 permissions:
   contents: write
@@ -38,17 +33,18 @@ jobs:
             kr-data-
             kr-history-
       - run: pip install -r requirements.txt
-      - name: Collect KRX market data
-        run: python scripts/collect_kr.py --dart-mode cached
+      - name: Collect OpenDART financial data
+        run: python scripts/collect_kr.py --dart-mode refresh
         env:
           KRX_ID: ${{ secrets.KRX_ID }}
           KRX_PW: ${{ secrets.KRX_PW }}
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
       - run: python -m unittest discover -s tests -v
       - name: Commit changed data
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/kr.json
-          git diff --cached --quiet || git commit -m "data: update KR unified screener"
+          git diff --cached --quiet || git commit -m "data: update OpenDART financials"
           git pull --rebase origin main
           git push

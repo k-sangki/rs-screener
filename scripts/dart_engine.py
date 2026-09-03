@@ -64,7 +64,12 @@ def financial_period_key(now: datetime) -> list[Any]:
     return [CACHE_SCHEMA_VERSION, year, report, now.year - 1]
 
 
-def load_cached_financials(path: Path, now: datetime, max_age_days: int = 7) -> dict[str, dict[str, Any]] | None:
+def load_cached_financials(
+    path: Path,
+    now: datetime,
+    max_age_days: int | None = 7,
+    require_current_period: bool = True,
+) -> dict[str, dict[str, Any]] | None:
     if not path.exists():
         return None
     try:
@@ -72,7 +77,9 @@ def load_cached_financials(path: Path, now: datetime, max_age_days: int = 7) -> 
         fetched_at = datetime.fromisoformat(payload["fetchedAt"])
         if fetched_at.tzinfo is None and now.tzinfo is not None:
             fetched_at = fetched_at.replace(tzinfo=now.tzinfo)
-        if payload.get("period") != financial_period_key(now) or now - fetched_at > timedelta(days=max_age_days):
+        if require_current_period and payload.get("period") != financial_period_key(now):
+            return None
+        if max_age_days is not None and now - fetched_at > timedelta(days=max_age_days):
             return None
         financials = payload.get("financials")
         return financials if isinstance(financials, dict) else None
@@ -86,13 +93,28 @@ def save_cached_financials(path: Path, now: datetime, financials: dict[str, dict
     path.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 
 
-def download_corp_codes(api_key: str, timeout: int = 40) -> tuple[dict[str, str], dict[str, str]]:
+def download_corp_codes(api_key: str, timeout: int = 40, attempts: int = 4) -> tuple[dict[str, str], dict[str, str]]:
     import requests
 
-    response = requests.get(f"{DART_BASE}/corpCode.xml", params={"crtfc_key": api_key}, timeout=timeout)
-    response.raise_for_status()
-    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
-        xml = archive.read(archive.namelist()[0])
+    xml = None
+    last_error: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            response = requests.get(f"{DART_BASE}/corpCode.xml", params={"crtfc_key": api_key}, timeout=timeout)
+            response.raise_for_status()
+            with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+                names = archive.namelist()
+                if not names:
+                    raise zipfile.BadZipFile("압축파일에 고유번호 XML이 없습니다.")
+                xml = archive.read(names[0])
+            break
+        except Exception as error:
+            last_error = error
+            if attempt < attempts:
+                LOGGER.warning("OpenDART 고유번호 파일 응답 오류 (%s/%s): %s", attempt, attempts, error)
+                time.sleep(attempt * 3)
+    if xml is None:
+        raise RuntimeError(f"OpenDART 고유번호 파일을 받지 못했습니다: {last_error}") from last_error
     root = ElementTree.fromstring(xml)
     stock_map: dict[str, str] = {}
     name_map: dict[str, str] = {}

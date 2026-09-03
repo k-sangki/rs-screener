@@ -27,6 +27,10 @@ BENCHMARKS = {"KOSPI": "069500", "KOSDAQ": "229200"}
 MIN_CLOSE = 5_000
 MAX_WORKERS = 4
 LOGGER = logging.getLogger("collect_kr")
+FINANCIAL_FIELDS = {
+    "dilutedEpsGrowthYoY", "revenueGrowthYoY", "annualEpsGrowth", "annualEpsLatestGrowth", "roe",
+    "operatingCashFlowTtm", "ebitdaCapexInterestCoverageTtm",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -34,6 +38,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", default="data/kr.json")
     parser.add_argument("--cache", default=".cache/kr_history.pkl")
     parser.add_argument("--dart-cache", default=".cache/dart_financials.json")
+    parser.add_argument("--dart-mode", choices=("auto", "cached", "refresh"), default="auto")
     parser.add_argument("--lookback-days", type=int, default=520)
     return parser.parse_args()
 
@@ -70,6 +75,37 @@ def save_cache(path: Path, histories: dict[str, pd.DataFrame]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("wb") as handle:
         pickle.dump(histories, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+def load_previous_items(path: Path) -> dict[str, dict[str, Any]]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        return {
+            str(item["ticker"]): item
+            for item in payload.get("items", [])
+            if isinstance(item, dict) and item.get("ticker")
+        }
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return {}
+
+
+def apply_previous_financials(
+    items: list[dict[str, Any]],
+    previous_items: dict[str, dict[str, Any]],
+    market_uptrends: dict[str, bool],
+) -> int:
+    count = 0
+    for item in items:
+        previous = previous_items.get(item["ticker"], {})
+        financial = {key: previous[key] for key in FINANCIAL_FIELDS if key in previous}
+        score_item(item, financial or None, market_uptrends.get(item["market"], False))
+        previous_a = previous.get("canSlim", {}).get("A") if isinstance(previous.get("canSlim"), dict) else None
+        if financial and previous_a is not None:
+            item["canSlim"]["A"] = previous_a
+            item["canSlimScore"] = sum(item["canSlim"].values())
+        if financial:
+            count += 1
+    return count
 
 
 def fetch_history(ticker: str, start: str, end: str, cached: pd.DataFrame | None) -> tuple[str, pd.DataFrame]:
@@ -290,10 +326,25 @@ def main() -> None:
         item.pop("_volume20", None)
         items.append(item)
 
+    output = Path(args.output)
+    previous_items = load_previous_items(output)
     dart_key = os.environ.get("DART_API_KEY", "").strip()
+    dart_cache_path = Path(args.dart_cache)
     financial_count = 0
-    if dart_key:
-        dart_cache_path = Path(args.dart_cache)
+    financials = None
+    if args.dart_mode == "refresh":
+        if not dart_key:
+            raise RuntimeError("OpenDART 갱신에는 DART_API_KEY가 필요합니다.")
+        LOGGER.info("OpenDART 재무 데이터 전체 갱신 시작")
+        financials = collect_financials(dart_key, items, now)
+        save_cached_financials(dart_cache_path, now, financials)
+    elif args.dart_mode == "cached":
+        financials = load_cached_financials(
+            dart_cache_path, now, max_age_days=None, require_current_period=False
+        )
+        if financials is None:
+            LOGGER.warning("OpenDART 캐시가 없어 기존 게시 데이터의 재무 항목을 유지합니다.")
+    elif dart_key:
         financials = load_cached_financials(dart_cache_path, now)
         if financials is None:
             LOGGER.info("OpenDART 재무 데이터 수집 시작")
@@ -307,20 +358,22 @@ def main() -> None:
                 save_cached_financials(dart_cache_path, now, financials)
             else:
                 LOGGER.info("OpenDART 재무 캐시 재사용")
+
+    if financials is not None:
         financial_count = len(financials)
         for item in items:
             score_item(item, financials.get(item["ticker"]), market_uptrends.get(item["market"], False))
         LOGGER.info("%s개 종목의 OpenDART 재무 데이터 반영", financial_count)
     else:
-        LOGGER.warning("DART_API_KEY가 없어 SEPA·CANSLIM 재무 항목을 건너뜁니다.")
+        financial_count = apply_previous_financials(items, previous_items, market_uptrends)
+        LOGGER.info("기존 게시 데이터에서 %s개 종목의 재무 항목 유지", financial_count)
 
     items.sort(key=lambda row: (-row["rs"], -row["marketCap"], row["ticker"]))
-    output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "region": "kr",
         "updatedAt": f"{datetime.strptime(date, '%Y%m%d').strftime('%Y-%m-%d')} {now.strftime('%H:%M')} KST",
-        "source": "KRX·Naver adjusted OHLCV via pykrx" + (" · OpenDART" if dart_key else ""),
+        "source": "KRX·Naver adjusted OHLCV via pykrx" + (" · OpenDART" if financial_count else ""),
         "universeCount": len(metrics),
         "publishedCount": len(items),
         "financialCount": financial_count,

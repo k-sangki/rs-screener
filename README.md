@@ -39,7 +39,7 @@ pip install -r requirements.txt
 python scripts/collect_kr.py
 ```
 
-평일 18:45 KST에 `.github/workflows/update-kr-data.yml`이 자동 실행됩니다. 첫 실행은 전체 가격 이력과 재무 데이터를 수집하므로 시간이 오래 걸릴 수 있습니다. 이후 가격 데이터는 누락 구간만 추가하고, DART 재무 데이터는 같은 공시 기간 안에서 최대 7일간 캐시를 재사용합니다.
+KRX 가격 데이터는 평일 08:00과 18:30 KST에 `.github/workflows/update-kr-data.yml`이 자동 실행합니다. OpenDART 재무 데이터는 매주 토요일 09:30 KST에 `.github/workflows/update-dart-data.yml`이 별도로 갱신합니다. KRX 작업은 마지막 DART 캐시를 재사용하므로 OpenDART 장애가 발생해도 가격·RS 갱신은 계속됩니다.
 
 가격·거래량으로 계산 가능한 RS, Trend, VCP와 기술 신호를 수집하고, OpenDART의 연결·별도 재무제표로 희석 주당순이익 성장률(분기 YoY), 매출 성장률(분기 YoY), 연간 EPS 성장률과 ROE를 계산합니다. 이 값으로 SEPA 등급과 CANSLIM 점수를 산출합니다. API 키는 저장소 코드가 아니라 GitHub Actions Secret `DART_API_KEY`에 보관합니다.
 

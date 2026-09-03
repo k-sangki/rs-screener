@@ -66,6 +66,15 @@ class DartPeriodTests(unittest.TestCase):
             self.assertEqual(load_cached_financials(path, datetime(2026, 8, 25, 12)), expected)
             self.assertIsNone(load_cached_financials(path, datetime(2026, 8, 28, 13)))
             self.assertIsNone(load_cached_financials(path, datetime(2026, 11, 15, 12)))
+            self.assertEqual(
+                load_cached_financials(
+                    path,
+                    datetime(2026, 11, 15, 12),
+                    max_age_days=None,
+                    require_current_period=False,
+                ),
+                expected,
+            )
 
 
 class FinancialMetricTests(unittest.TestCase):
