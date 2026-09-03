@@ -5,7 +5,7 @@ on:
     branches: [main]
   workflow_dispatch:
   workflow_run:
-    workflows: ["Update KR market data"]
+    workflows: ["Update KRX market data", "Update OpenDART financial data"]
     types: [completed]
 
 permissions:
