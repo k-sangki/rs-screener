@@ -26,15 +26,30 @@ def weighted_return(closes: Sequence[float]) -> float | None:
 
 
 def percentile_scores(raw_scores: Mapping[str, float]) -> dict[str, int]:
-    """Map raw values to 0–99 percentile scores; ties receive the same score."""
+    """Map raw values to a 1–99 rank scale; ties receive the same score."""
     if not raw_scores:
         return {}
     ordered = sorted(raw_scores.values())
     count = len(ordered)
+    if count == 1:
+        return {ticker: 99 for ticker in raw_scores}
     return {
-        ticker: min(99, max(0, floor(100 * bisect_left(ordered, value) / count)))
+        ticker: min(99, max(1, 1 + floor(98 * bisect_left(ordered, value) / (count - 1))))
         for ticker, value in raw_scores.items()
     }
+
+
+def grouped_percentile_scores(
+    raw_scores: Mapping[str, float], groups: Mapping[str, str]
+) -> dict[str, int]:
+    """Rank each ticker only against other tickers in the same market group."""
+    grouped: dict[str, dict[str, float]] = {}
+    for ticker, value in raw_scores.items():
+        grouped.setdefault(groups[ticker], {})[ticker] = value
+    result: dict[str, int] = {}
+    for scores in grouped.values():
+        result.update(percentile_scores(scores))
+    return result
 
 
 def average(values: Iterable[float], window: int) -> float | None:

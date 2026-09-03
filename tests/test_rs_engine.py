@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from rs_engine import has_recent_pocket_pivot, market_cap_size, percentile_scores, range_signals, trend_template_score, weighted_return
+from rs_engine import grouped_percentile_scores, has_recent_pocket_pivot, market_cap_size, percentile_scores, range_signals, trend_template_score, weighted_return
 
 
 class WeightedReturnTests(unittest.TestCase):
@@ -23,9 +23,17 @@ class WeightedReturnTests(unittest.TestCase):
 class PercentileTests(unittest.TestCase):
     def test_percentile_range_and_ties(self):
         result = percentile_scores({"A": 1.0, "B": 2.0, "C": 2.0, "D": 4.0})
-        self.assertEqual(result["A"], 0)
+        self.assertEqual(result["A"], 1)
         self.assertEqual(result["B"], result["C"])
-        self.assertEqual(result["D"], 75)
+        self.assertEqual(result["D"], 99)
+        self.assertNotIn(0, result.values())
+
+    def test_percentiles_are_ranked_inside_each_market(self):
+        result = grouped_percentile_scores(
+            {"K1": 1.0, "K2": 2.0, "Q1": 100.0, "Q2": 200.0},
+            {"K1": "KOSPI", "K2": "KOSPI", "Q1": "KOSDAQ", "Q2": "KOSDAQ"},
+        )
+        self.assertEqual(result, {"K1": 1, "K2": 99, "Q1": 1, "Q2": 99})
 
 
 class SignalTests(unittest.TestCase):

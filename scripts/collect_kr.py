@@ -19,7 +19,7 @@ import pandas as pd
 from pykrx import stock
 
 from dart_engine import collect_financials, load_cached_financials, save_cached_financials, score_item
-from rs_engine import average, market_cap_size, percentile_scores, range_signals, trend_template_score, weighted_return
+from rs_engine import average, grouped_percentile_scores, market_cap_size, range_signals, trend_template_score, weighted_return
 
 
 SEOUL = ZoneInfo("Asia/Seoul")
@@ -292,8 +292,13 @@ def main() -> None:
         if metric:
             metrics[ticker] = metric
 
-    current_scores = percentile_scores({ticker: item["rsRaw"] for ticker, item in metrics.items()})
-    previous_scores = percentile_scores({ticker: item["rsRawPrevious"] for ticker, item in metrics.items()})
+    metric_markets = {ticker: item["market"] for ticker, item in metrics.items()}
+    current_scores = grouped_percentile_scores(
+        {ticker: item["rsRaw"] for ticker, item in metrics.items()}, metric_markets
+    )
+    previous_scores = grouped_percentile_scores(
+        {ticker: item["rsRawPrevious"] for ticker, item in metrics.items()}, metric_markets
+    )
     accumulation = institutional_accumulation(date, metrics)
     market_uptrends = {
         market: bool(series.iloc[-1] > (average(series.tolist(), 50) or float("inf")) > (average(series.tolist(), 200) or float("inf")))
