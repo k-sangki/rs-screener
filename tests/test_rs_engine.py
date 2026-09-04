@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from rs_engine import grouped_percentile_scores, has_recent_pocket_pivot, market_cap_size, percentile_scores, range_signals, trend_template_score, weighted_return
+from rs_engine import grouped_percentile_scores, has_recent_pocket_pivot, is_trading_on_session, market_cap_size, percentile_scores, range_signals, trend_template_score, weighted_return
 
 
 class WeightedReturnTests(unittest.TestCase):
@@ -34,6 +34,13 @@ class PercentileTests(unittest.TestCase):
             {"K1": "KOSPI", "K2": "KOSPI", "Q1": "KOSDAQ", "Q2": "KOSDAQ"},
         )
         self.assertEqual(result, {"K1": 1, "K2": 99, "Q1": 1, "Q2": 99})
+
+
+class TradingStatusTests(unittest.TestCase):
+    def test_requires_current_session_and_positive_volume(self):
+        self.assertTrue(is_trading_on_session("20260904", "20260904", 100))
+        self.assertFalse(is_trading_on_session("20260903", "20260904", 100))
+        self.assertFalse(is_trading_on_session("20260904", "20260904", 0))
 
 
 class SignalTests(unittest.TestCase):

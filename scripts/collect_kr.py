@@ -19,7 +19,7 @@ import pandas as pd
 from pykrx import stock
 
 from dart_engine import collect_financials, load_cached_financials, save_cached_financials, score_item
-from rs_engine import average, grouped_percentile_scores, market_cap_size, range_signals, trend_template_score, weighted_return
+from rs_engine import average, grouped_percentile_scores, is_trading_on_session, market_cap_size, range_signals, trend_template_score, weighted_return
 
 
 SEOUL = ZoneInfo("Asia/Seoul")
@@ -180,10 +180,19 @@ def price_columns(frame: pd.DataFrame) -> tuple[pd.Series, pd.Series, pd.Series,
     return close, high, low, volume
 
 
-def build_metrics(ticker: str, frame: pd.DataFrame, market: str, benchmark: pd.Series) -> dict[str, Any] | None:
+def build_metrics(
+    ticker: str,
+    frame: pd.DataFrame,
+    market: str,
+    benchmark: pd.Series,
+    expected_date: str,
+) -> dict[str, Any] | None:
     if frame is None or len(frame) < 253:
         return None
     close, high, low, volume = price_columns(frame)
+    last_session = pd.Timestamp(frame.index[-1]).strftime("%Y%m%d")
+    if not is_trading_on_session(last_session, expected_date, float(volume.iloc[-1])):
+        return None
     closes = close.tolist()
     raw = weighted_return(closes)
     raw_previous = weighted_return(closes[:-1])
@@ -283,7 +292,12 @@ def main() -> None:
     date, cap_frame = latest_market_snapshot(now)
     close_snapshot = first_column(cap_frame, "종가", "Close").astype(float)
     cap_snapshot = first_column(cap_frame, "시가총액", "Market Cap").astype(float)
-    eligible = [str(ticker) for ticker in cap_frame.index if close_snapshot.loc[ticker] >= MIN_CLOSE]
+    volume_snapshot = first_column(cap_frame, "거래량", "Volume").astype(float)
+    eligible = [
+        str(ticker)
+        for ticker in cap_frame.index
+        if close_snapshot.loc[ticker] >= MIN_CLOSE and volume_snapshot.loc[ticker] > 0
+    ]
     names = ticker_names(date, eligible)
     kospi = set(stock.get_market_ticker_list(date, market="KOSPI"))
     kosdaq = set(stock.get_market_ticker_list(date, market="KOSDAQ"))
@@ -322,7 +336,13 @@ def main() -> None:
 
     metrics = {}
     for ticker in eligible:
-        metric = build_metrics(ticker, histories.get(ticker, pd.DataFrame()), markets[ticker], benchmark_series[markets[ticker]])
+        metric = build_metrics(
+            ticker,
+            histories.get(ticker, pd.DataFrame()),
+            markets[ticker],
+            benchmark_series[markets[ticker]],
+            date,
+        )
         if metric:
             metrics[ticker] = metric
 

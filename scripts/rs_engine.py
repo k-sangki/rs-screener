@@ -52,6 +52,11 @@ def grouped_percentile_scores(
     return result
 
 
+def is_trading_on_session(last_session: str, target_session: str, last_volume: float) -> bool:
+    """Return whether a security has a positive-volume row for the target session."""
+    return last_session == target_session and float(last_volume) > 0
+
+
 def average(values: Iterable[float], window: int) -> float | None:
     data = list(values)
     if len(data) < window:
