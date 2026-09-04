@@ -23,7 +23,7 @@ from rs_engine import average, grouped_percentile_scores, market_cap_size, range
 
 
 SEOUL = ZoneInfo("Asia/Seoul")
-BENCHMARKS = {"KOSPI": "069500", "KOSDAQ": "229200"}
+INDEX_BENCHMARKS = {"KOSPI": "1001", "KOSDAQ": "2001"}
 MIN_CLOSE = 5_000
 MAX_WORKERS = 4
 LOGGER = logging.getLogger("collect_kr")
@@ -132,6 +132,34 @@ def fetch_history(ticker: str, start: str, end: str, cached: pd.DataFrame | None
     except Exception as error:
         LOGGER.warning("%s 수집 실패: %s", ticker, error)
         return ticker, cached if cached is not None else pd.DataFrame()
+
+
+def fetch_index_history(index_code: str, start: str, end: str, cached: pd.DataFrame | None) -> tuple[str, pd.DataFrame]:
+    """Fetch a KRX composite index history, incrementally when a cache exists."""
+    cache_key = f"INDEX:{index_code}"
+    try:
+        fetch_start = start
+        if cached is not None and not cached.empty:
+            last = pd.Timestamp(cached.index.max())
+            if last.strftime("%Y%m%d") >= end:
+                return cache_key, cached
+            fetch_start = (last + pd.Timedelta(days=1)).strftime("%Y%m%d")
+        for attempt in range(3):
+            try:
+                fresh = stock.get_index_ohlcv_by_date(fetch_start, end, index_code)
+                break
+            except Exception:
+                if attempt == 2:
+                    raise
+                time.sleep(1.5 * (attempt + 1))
+        if fresh is None or fresh.empty:
+            return cache_key, cached if cached is not None else pd.DataFrame()
+        combined = pd.concat([cached, fresh]) if cached is not None and not cached.empty else fresh
+        combined = combined[~combined.index.duplicated(keep="last")].sort_index().tail(320)
+        return cache_key, combined
+    except Exception as error:
+        LOGGER.warning("지수 %s 수집 실패: %s", index_code, error)
+        return cache_key, cached if cached is not None else pd.DataFrame()
 
 
 def ticker_names(date: str, tickers: list[str]) -> dict[str, str]:
@@ -274,16 +302,22 @@ def main() -> None:
                 histories[ticker] = frame
             if index % 100 == 0:
                 LOGGER.info("%s/%s 완료", index, len(futures))
-    histories = {ticker: frame for ticker, frame in histories.items() if ticker in markets}
+    index_cache_keys = {f"INDEX:{code}" for code in INDEX_BENCHMARKS.values()}
+    histories = {
+        ticker: frame
+        for ticker, frame in histories.items()
+        if ticker in markets or ticker in index_cache_keys
+    }
     save_cache(cache_path, histories)
 
     benchmark_series: dict[str, pd.Series] = {}
-    for market, ticker in BENCHMARKS.items():
-        _, frame = fetch_history(ticker, start, date, histories.get(ticker))
+    for market, index_code in INDEX_BENCHMARKS.items():
+        cache_key = f"INDEX:{index_code}"
+        _, frame = fetch_index_history(index_code, start, date, histories.get(cache_key))
         if frame is None or frame.empty:
             raise RuntimeError(f"{market} 벤치마크 데이터를 수집하지 못했습니다.")
         benchmark_series[market] = price_columns(frame)[0]
-        histories[ticker] = frame
+        histories[cache_key] = frame
     save_cache(cache_path, histories)
 
     metrics = {}
